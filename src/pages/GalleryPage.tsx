@@ -1,42 +1,65 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState } from 'react';
 
-// 图片数据配置 - 在这里添加你的图片组
+// ============================================================
+// 图片数据配置
+// ------------------------------------------------------------
+// 【如何替换成你自己的图片】
+//
+// 1. 把图片文件放入 public/images/<相册名>/ 对应的文件夹里
+//    例如：public/images/nature/photo1.jpg
+//
+// 2. 将下方 cover 和 images[].src 中的路径改为：
+//    /images/<相册名>/<文件名>
+//    例如：cover: '/images/nature/cover.jpg'
+//
+// 3. 修改 title / description / caption 为你想要的文字
+//
+// 4. 如需新增相册，仿照下方格式继续添加即可
+// ============================================================
 const albums: Record<string, {
   title: string;
   description: string;
   cover: string;
   images: { src: string; caption?: string }[];
 }> = {
-  'nature': {
-    title: '自然风光',
-    description: '记录大自然的美丽瞬间',
-    cover: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
+  'test1': {
+    title: '2604014',
+    description: '2604014不良记录图片',
+    // 替换为：'/images/nature/cover.jpg'
+    cover: 'public/images/2604014/2604014流转单.jpg',
     images: [
-      { src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200', caption: '云海日出' },
-      { src: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1200', caption: '森林晨雾' },
-      { src: 'https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=1200', caption: '湖光山色' },
-      { src: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1200', caption: '草原日落' },
-      { src: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1200', caption: '山间小路' },
-      { src: 'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=1200', caption: '林间溪流' },
+      // 替换为：{ src: '/images/nature/photo1.jpg', caption: '图片标题' }
+      { src: 'public/images/2604014/2604014流转单.jpg', caption: '2604014流转单' },
+      { src: 'public/images/2604014/一次老化.jpg', caption: '一次老化' },
+      { src: 'public/images/2604014/一次老化电压.jpg', caption: '一次老化电压' },
+      { src: 'public/images/2604014/二次老化.jpg', caption: '二次老化' },
+      { src: 'public/images/2604014/二次老化电压.jpg', caption: '二次老化电压' },
     ],
   },
-  'city': {
-    title: '城市建筑',
-    description: '现代都市的建筑美学',
-    cover: 'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=800',
+  'test2': {
+    title: '2604131',
+    description: '2604131不良记录图片',
+    // 替换为：'/images/city/cover.jpg'
+    cover: 'public/images/2604131/2604131流转单.jpg',
     images: [
-      { src: 'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=1200', caption: '纽约夜景' },
-      { src: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=1200', caption: '城市天际线' },
-      { src: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=1200', caption: '都市生活' },
-      { src: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?w=1200', caption: '建筑线条' },
+      // 替换为：{ src: '/images/city/photo1.jpg', caption: '图片标题' }
+      { src: 'public/images/2604131/2604131流转单.jpg', caption: '2604131流转单' },
+      { src: 'public/images/2604131/一次老化.jpg', caption: '一次老化' },
+      { src: 'public/images/2604131/一次老化电压.jpg', caption: '一次老化电压' },
+      { src: 'public/images/2604131/二次老化.jpg', caption: '二次老化' },
+      { src: 'public/images/2604131/二次老化电压.jpg', caption: '二次老化电压' },
+      { src: 'public/images/2604131/异常处理单.jpg', caption: '异常处理单' },
+      { src: 'public/images/2604131/拆解图.jpg', caption: '拆解图' },
     ],
   },
   'travel': {
     title: '旅行记忆',
     description: '走过的路，看过的风景',
+    // 替换为：'/images/travel/cover.jpg'
     cover: 'https://images.unsplash.com/photo-1488085061387-422e29b40080?w=800',
     images: [
+      // 替换为：{ src: '/images/travel/photo1.jpg', caption: '图片标题' }
       { src: 'https://images.unsplash.com/photo-1488085061387-422e29b40080?w=1200', caption: '星空营地' },
       { src: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200', caption: '热带海滩' },
       { src: 'https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=1200', caption: '沙漠驼队' },
