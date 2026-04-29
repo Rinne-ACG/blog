@@ -26,31 +26,27 @@ const albums: Record<string, {
   'test1': {
     title: '2604014',
     description: '2604014不良记录图片',
-    // 替换为：'/images/nature/cover.jpg'
-    cover: 'public/images/2604014/2604014流转单.jpg',
+    cover: '/images/2604014/2604014流转单.jpg',
     images: [
-      // 替换为：{ src: '/images/nature/photo1.jpg', caption: '图片标题' }
-      { src: 'public/images/2604014/2604014流转单.jpg', caption: '2604014流转单' },
-      { src: 'public/images/2604014/一次老化.jpg', caption: '一次老化' },
-      { src: 'public/images/2604014/一次老化电压.jpg', caption: '一次老化电压' },
-      { src: 'public/images/2604014/二次老化.jpg', caption: '二次老化' },
-      { src: 'public/images/2604014/二次老化电压.jpg', caption: '二次老化电压' },
+      { src: '/images/2604014/2604014流转单.jpg', caption: '2604014流转单' },
+      { src: '/images/2604014/一次老化.jpg', caption: '一次老化' },
+      { src: '/images/2604014/一次老化电压.jpg', caption: '一次老化电压' },
+      { src: '/images/2604014/二次老化.jpg', caption: '二次老化' },
+      { src: '/images/2604014/二次老化电压.jpg', caption: '二次老化电压' },
     ],
   },
   'test2': {
     title: '2604131',
     description: '2604131不良记录图片',
-    // 替换为：'/images/city/cover.jpg'
-    cover: 'public/images/2604131/2604131流转单.jpg',
+    cover: '/images/2604131/2604131流转单.jpg',
     images: [
-      // 替换为：{ src: '/images/city/photo1.jpg', caption: '图片标题' }
-      { src: 'public/images/2604131/2604131流转单.jpg', caption: '2604131流转单' },
-      { src: 'public/images/2604131/一次老化.jpg', caption: '一次老化' },
-      { src: 'public/images/2604131/一次老化电压.jpg', caption: '一次老化电压' },
-      { src: 'public/images/2604131/二次老化.jpg', caption: '二次老化' },
-      { src: 'public/images/2604131/二次老化电压.jpg', caption: '二次老化电压' },
-      { src: 'public/images/2604131/异常处理单.jpg', caption: '异常处理单' },
-      { src: 'public/images/2604131/拆解图.jpg', caption: '拆解图' },
+      { src: '/images/2604131/2604131流转单.jpg', caption: '2604131流转单' },
+      { src: '/images/2604131/一次老化.jpg', caption: '一次老化' },
+      { src: '/images/2604131/一次老化电压.jpg', caption: '一次老化电压' },
+      { src: '/images/2604131/二次老化.jpg', caption: '二次老化' },
+      { src: '/images/2604131/二次老化电压.jpg', caption: '二次老化电压' },
+      { src: '/images/2604131/异常处理单.jpg', caption: '异常处理单' },
+      { src: '/images/2604131/拆解图.jpg', caption: '拆解图' },
     ],
   },
   'travel': {
