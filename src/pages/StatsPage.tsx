@@ -55,7 +55,6 @@ export default function StatsPage() {
   // 统计数据
   const totalProduction = records.reduce((s, r) => s + r.productionQty, 0);
   const totalGood = records.reduce((s, r) => s + r.goodQty, 0);
-  const totalDefect = records.reduce((s, r) => s + r.defectQty, 0);
   const overallYield = calcYieldRate(totalGood, totalProduction);
 
   // 打开新增表单
