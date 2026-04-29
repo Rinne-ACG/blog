@@ -5,6 +5,7 @@ import PostPage from './pages/PostPage';
 import TagsPage from './pages/TagsPage';
 import AboutPage from './pages/AboutPage';
 import GalleryPage from './pages/GalleryPage';
+import StatsPage from './pages/StatsPage';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/about" element={<AboutPage />} />
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/gallery/:album" element={<GalleryPage />} />
+            <Route path="/stats" element={<StatsPage />} />
           </Routes>
         </main>
 
