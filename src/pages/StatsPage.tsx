@@ -209,9 +209,9 @@ function FilterDropdown({
   const allSelected = uniqueVals.length > 0 && selected.size === uniqueVals.length;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-0 min-h-0 overflow-hidden">
       {/* 标题栏 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50 flex-shrink-0">
         <span className="text-xs font-medium text-gray-600">
           筛选（{selected.size}/{uniqueVals.length}）
           {searchTerm && filtered.length !== uniqueVals.length && (
@@ -234,18 +234,18 @@ function FilterDropdown({
       </div>
 
       {/* 搜索框 */}
-      <div className="px-2 py-1.5 border-b border-gray-50">
+      <div className="px-2 py-1.5 border-b border-gray-50 flex-shrink-0">
         <input
           type="text"
           placeholder="搜索筛选值..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 h-7"
         />
       </div>
 
       {/* 选项列表 */}
-      <div className="overflow-y-auto flex-1 py-1">
+      <div className="overflow-y-auto flex-1 min-h-0">
         {filtered.length === 0 ? (
           <div className="px-3 py-2 text-xs text-gray-400">{searchTerm ? '无匹配项' : '无可用选项'}</div>
         ) : (
@@ -271,7 +271,7 @@ function FilterDropdown({
       </div>
 
       {/* 全选/取消全选 */}
-      <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
+      <div className="px-3 py-2 border-t border-gray-100 bg-gray-50 flex-shrink-0">
         <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 cursor-pointer">
           <input
             type="checkbox"
@@ -985,7 +985,7 @@ export default function StatsPage() {
                         {/* 筛选下拉菜单 */}
                         {showDropdown && (
                           <div
-                            className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-72 overflow-hidden flex flex-col"
+                            className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-72 overflow-hidden"
                           >
                             <FilterDropdown
                               fieldKey={key}
