@@ -4,10 +4,41 @@ import type { ProductionRecord } from '../types';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
 
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const calcRate = (part: number, total: number) =>
   total > 0 ? round2((part / total) * 100) : 0;
+
+/**
+ * 根据当前表单值，自动计算四个派生字段并合并回 form。
+ * 1. actualQty  = 良品数 + 各类不良之和
+ * 2. loss       = (actualQty - designQty) / designQty  （保留4位小数，百分比）
+ * 3. firstBottomConvexShortBurstRate = (短路+爆破+底凸) / 卷绕数 （百分比）
+ * 4. firstPassRate = 良品数 / actualQty （百分比）
+ */
+const calcDerived = (f: ProductionRecord): ProductionRecord => {
+  const defectSum =
+    f.defectShort + f.defectBurst + f.defectBottomConvex +
+    f.defectVoltage + f.defectAppearance + f.defectLeakage +
+    f.defectHighCap + f.defectLowCap + f.defectDF;
+
+  const actualQty = f.goodQty + defectSum;
+
+  const loss =
+    f.designQty > 0
+      ? round4((actualQty - f.designQty) / f.designQty * 100)
+      : 0;
+
+  const firstBottomConvexShortBurstRate =
+    f.windingQty > 0
+      ? round4((f.defectShort + f.defectBurst + f.defectBottomConvex) / f.windingQty * 100)
+      : 0;
+
+  const firstPassRate = calcRate(f.goodQty, actualQty);
+
+  return { ...f, actualQty, loss, firstBottomConvexShortBurstRate, firstPassRate };
+};
 
 const emptyRecord = (): ProductionRecord => ({
   id: generateId(),
@@ -154,10 +185,11 @@ export default function StatsPage() {
     if (!form.materialCode.trim()) { alert('请填写物料代码'); return; }
     if (!form.workOrderNo.trim()) { alert('请填写流转单号'); return; }
 
+    // 保存前再计算一次派生字段，确保数据最新
+    const derived = calcDerived(form);
     const final: ProductionRecord = {
-      ...form,
-      loss: form.actualQty - form.goodQty,
-      batchYieldRate: form.batchYieldRate || calcRate(form.goodQty, form.actualQty),
+      ...derived,
+      batchYieldRate: derived.batchYieldRate || calcRate(derived.goodQty, derived.actualQty),
     };
 
     if (editingId) {
@@ -188,9 +220,7 @@ export default function StatsPage() {
             for (const k of keys) if (row[k] !== undefined && row[k] !== '') return row[k];
             return '';
           };
-          const actualQty = num(g(['实际此单总数', '实际总数', 'actualQty']));
-          const goodQty = num(g(['良品数', 'goodQty']));
-          return {
+          const base: ProductionRecord = {
             id: generateId(),
             entryDate: str(g(['录入日期', 'entryDate'])).slice(0, 10),
             seq: str(g(['序号', 'seq'])),
@@ -200,13 +230,13 @@ export default function StatsPage() {
             workOrderNo: str(g(['流转单号', 'workOrderNo'])),
             positiveFoilVoltage: str(g(['正箔电压', 'positiveFoilVoltage'])),
             designQty: num(g(['设计数量', 'designQty'])),
-            actualQty,
+            actualQty: 0, // 由 calcDerived 填充
             windingQty: num(g(['卷绕数', 'windingQty'])),
-            goodQty,
-            loss: num(g(['损耗', 'loss'])) || actualQty - goodQty,
-            firstBottomConvexShortBurstRate: num(g(['一次底凸短路爆破率', 'firstBottomConvexShortBurstRate'])),
-            firstPassRate: num(g(['一次直通率', 'firstPassRate'])),
-            batchYieldRate: num(g(['整批良率', 'batchYieldRate'])) || calcRate(goodQty, actualQty),
+            goodQty: num(g(['良品数', 'goodQty'])),
+            loss: 0,
+            firstBottomConvexShortBurstRate: 0,
+            firstPassRate: 0,
+            batchYieldRate: num(g(['整批良率', 'batchYieldRate'])),
             defectShort: num(g(['短路', 'defectShort'])),
             defectBurst: num(g(['爆破', 'defectBurst'])),
             defectBottomConvex: num(g(['底凸', 'defectBottomConvex'])),
@@ -219,6 +249,12 @@ export default function StatsPage() {
             operator: str(g(['作业员', 'operator'])),
             notes: str(g(['备注', 'notes'])),
             reworkOrderNo: str(g(['重工单号', 'reworkOrderNo'])),
+          };
+          // 自动计算派生字段
+          const derived = calcDerived(base);
+          return {
+            ...derived,
+            batchYieldRate: derived.batchYieldRate || calcRate(derived.goodQty, derived.actualQty),
           };
         });
 
@@ -249,14 +285,16 @@ export default function StatsPage() {
     showToast('导出成功');
   };
 
-  // 数值输入
+  // 数值输入（输入后自动重算派生字段）
   const numInput = (field: keyof ProductionRecord, placeholder = '0') => (
     <input
       type="number"
       min="0"
       placeholder={placeholder}
       value={(form[field] as number) || ''}
-      onChange={(e) => setForm((f) => ({ ...f, [field]: Number(e.target.value) || 0 }))}
+      onChange={(e) =>
+        setForm((f) => calcDerived({ ...f, [field]: Number(e.target.value) || 0 }))
+      }
       className={inputCls}
     />
   );
@@ -441,12 +479,22 @@ export default function StatsPage() {
                 <h3 className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-3">数量统计</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <Field label="设计数量">{numInput('designQty')}</Field>
-                  <Field label="实际此单总数" required>{numInput('actualQty')}</Field>
                   <Field label="卷绕数">{numInput('windingQty')}</Field>
                   <Field label="良品数" required>{numInput('goodQty')}</Field>
-                  <Field label="损耗（自动）">
-                    <div className="px-2.5 py-2 bg-gray-50 rounded-lg text-sm text-gray-600 border border-gray-200">
-                      {form.actualQty - form.goodQty >= 0 ? (form.actualQty - form.goodQty) : '—'}
+                  <Field label="实际此单总数（自动）">
+                    <div className="px-2.5 py-2 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 border border-blue-200 flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      {form.actualQty}
+                    </div>
+                  </Field>
+                  <Field label="损耗（自动，%）">
+                    <div className={`px-2.5 py-2 rounded-lg text-sm font-medium border flex items-center gap-1 ${
+                      form.loss > 0 ? 'bg-red-50 text-red-600 border-red-200' :
+                      form.loss < 0 ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                      'bg-gray-50 text-gray-500 border-gray-200'
+                    }`}>
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      {form.designQty > 0 ? `${form.loss}%` : '—'}
                     </div>
                   </Field>
                 </div>
@@ -456,8 +504,18 @@ export default function StatsPage() {
               <div>
                 <h3 className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-3">良率统计（%）</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <Field label="一次底凸短路爆破率">{numInput('firstBottomConvexShortBurstRate')}</Field>
-                  <Field label="一次直通率">{numInput('firstPassRate')}</Field>
+                  <Field label="一次底凸短路爆破率（自动）">
+                    <div className="px-2.5 py-2 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 border border-blue-200 flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      {form.windingQty > 0 ? `${form.firstBottomConvexShortBurstRate}%` : '—'}
+                    </div>
+                  </Field>
+                  <Field label="一次直通率（自动）">
+                    <div className="px-2.5 py-2 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 border border-blue-200 flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      {form.actualQty > 0 ? `${form.firstPassRate}%` : '—'}
+                    </div>
+                  </Field>
                   <Field label="整批良率（留空自动计算）">
                     <div className="flex items-center gap-2">
                       {numInput('batchYieldRate')}
