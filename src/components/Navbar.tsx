@@ -1,9 +1,28 @@
-import { Link, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 export default function Navbar() {
-  const location = useLocation();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const location   = useLocation();
+  const navigate    = useNavigate();
+  const [menuOpen, setMenuOpen]   = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setUserEmail(session?.user?.email ?? null)
+    );
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUserEmail(null);
+    navigate('/login', { replace: true });
+  };
 
   const links = [
     { to: '/', label: '文章' },
@@ -40,6 +59,25 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+
+          {/* 用户区 */}
+          {userEmail ? (
+            <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-200">
+              <span className="text-sm text-gray-600 max-w-[160px] truncate" title={userEmail}>
+                {userEmail}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+                title="退出登录"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+          ) : null}
         </nav>
 
         {/* Mobile menu button */}
@@ -73,6 +111,14 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+          {userEmail && (
+            <button
+              onClick={() => { setMenuOpen(false); handleLogout(); }}
+              className="block w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 mb-1"
+            >
+              退出登录（{userEmail}）
+            </button>
+          )}
         </div>
       )}
     </header>
