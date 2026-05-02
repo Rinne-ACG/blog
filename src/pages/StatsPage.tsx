@@ -949,7 +949,6 @@ export default function StatsPage() {
                     const isActions = key === '__actions__';
                     const uniqueVals = isActions ? [] : getColumnUniqueValues(key as SortField);
                     const hasFilter = filterValues[key] && filterValues[key].size > 0 && filterValues[key].size < uniqueVals.length;
-                    const showDropdown = filterOpen === key && !isActions;
 
                     return (
                       <th key={key}
