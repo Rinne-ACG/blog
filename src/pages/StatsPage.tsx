@@ -1007,33 +1007,33 @@ export default function StatsPage() {
               <tbody>
                 {filtered.map((r, i) => (
                   <tr key={r.id} className={`group hover:bg-indigo-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{r.entryDate}</td>
-                    <td className="px-2 py-1.5">{r.seq}</td>
-                    <td className="px-2 py-1.5 font-medium text-gray-800">{r.materialCode}</td>
-                    <td className="px-2 py-1.5">{r.spec}</td>
-                    <td className="px-2 py-1.5">{r.size}</td>
-                    <td className="px-2 py-1.5">{r.workOrderNo}</td>
-                    <td className="px-2 py-1.5">{r.positiveFoilVoltage}</td>
-                    <td className="px-2 py-1.5 text-right">{r.designQty.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-right font-medium text-indigo-600">{r.actualQty.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-right">{r.windingQty.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-right font-medium text-green-600">{r.goodQty.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-right">{r.loss >= 0 ? `+${r.loss}` : r.loss}%</td>
-                    <td className="px-2 py-1.5 text-right text-red-500">{r.firstBottomConvexShortBurstRate}%</td>
-                    <td className="px-2 py-1.5 text-right text-blue-600">{r.firstPassRate}%</td>
-                    <td className="px-2 py-1.5 text-right">{r.batchYieldRate > 0 ? `${r.batchYieldRate}%` : '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectShort || '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectBurst || '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectBottomConvex || '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectVoltage || '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectAppearance || '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectLeakage || '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectHighCap || '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectLowCap || '—'}</td>
-                    <td className="px-2 py-1.5 text-right">{r.defectDF || '—'}</td>
+                    <td className="px-2 py-1.5 text-center whitespace-nowrap">{r.entryDate}</td>
+                    <td className="px-2 py-1.5 text-center">{r.seq}</td>
+                    <td className="px-2 py-1.5 text-center font-medium text-gray-800">{r.materialCode}</td>
+                    <td className="px-2 py-1.5 text-center">{r.spec}</td>
+                    <td className="px-2 py-1.5 text-center">{r.size}</td>
+                    <td className="px-2 py-1.5 text-center">{r.workOrderNo}</td>
+                    <td className="px-2 py-1.5 text-center">{r.positiveFoilVoltage}</td>
+                    <td className="px-2 py-1.5 text-center">{r.designQty.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center font-medium text-indigo-600">{r.actualQty.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center">{r.windingQty.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center font-medium text-green-600">{r.goodQty.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center">{r.loss >= 0 ? `+${r.loss}` : r.loss}%</td>
+                    <td className="px-2 py-1.5 text-center text-red-500">{r.firstBottomConvexShortBurstRate}%</td>
+                    <td className="px-2 py-1.5 text-center text-blue-600">{r.firstPassRate}%</td>
+                    <td className="px-2 py-1.5 text-center">{r.batchYieldRate > 0 ? `${r.batchYieldRate}%` : '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectShort || '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectBurst || '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectBottomConvex || '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectVoltage || '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectAppearance || '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectLeakage || '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectHighCap || '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectLowCap || '—'}</td>
+                    <td className="px-2 py-1.5 text-center">{r.defectDF || '—'}</td>
                     <td className="px-2 py-1.5">{r.operator}</td>
                     <td className="px-2 py-1.5 max-w-[120px] truncate">{r.notes}</td>
-                    <td className="px-2 py-1.5">{r.reworkOrderNo}</td>
+                    <td className="px-2 py-1.5 text-center">{r.reworkOrderNo}</td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => openEdit(r)} className="p-1 text-indigo-500 hover:text-indigo-700" title="编辑">
