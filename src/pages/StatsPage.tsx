@@ -75,12 +75,27 @@ function parseSheetRecords(
   const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 }) as unknown[][];
   if (raw.length < 2) return [];
 
-  let headerRowIdx = 0;
-  for (let i = 0; i < raw.length; i++) {
-    if (raw[i] && (raw[i] as unknown[]).some(
-      (c) => c !== null && c !== undefined && c !== ''
-    )) { headerRowIdx = i; break; }
+  // 找表头行：必须包含已知业务字段（如"日期"、"序号"、"物料代码"等），
+  // 避免把标题行（如"不良拆解统计表"）误认为表头
+  const HEADER_KEYWORDS = ['日期', '序号', '物料代码', '规格', '流转单号', '良品数'];
+  let headerRowIdx = -1;
+  for (let i = 0; i < Math.min(raw.length, 10); i++) {
+    if (!raw[i]) continue;
+    const rowStrs = (raw[i] as unknown[]).map((c) =>
+      c == null ? '' : String(c).replace(/\n|\r/g, '').trim()
+    );
+    const matchCount = HEADER_KEYWORDS.filter((kw) => rowStrs.includes(kw)).length;
+    if (matchCount >= 3) { headerRowIdx = i; break; }
   }
+  // 没找到关键字匹配的表头行时，降级为第一个非空行
+  if (headerRowIdx === -1) {
+    for (let i = 0; i < raw.length; i++) {
+      if (raw[i] && (raw[i] as unknown[]).some(
+        (c) => c !== null && c !== undefined && c !== ''
+      )) { headerRowIdx = i; break; }
+    }
+  }
+  if (headerRowIdx === -1) return [];
 
   const headers = (raw[headerRowIdx] as unknown[]).map((h) =>
     h == null ? '' : String(h).replace(/\n|\r/g, '').trim()
