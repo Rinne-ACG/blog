@@ -846,6 +846,24 @@ export default function StatsPage() {
 
   /* ── 表单输入控件 ── */
   const inputCls = 'w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition';
+
+  // 获取某字段的历史唯一值（按出现顺序去重）
+  const getFieldOptions = (field: keyof ProductionRecord): string[] => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    sheetRecords.forEach((r) => {
+      const val = r[field];
+      if (val !== undefined && val !== null && val !== '') {
+        const strVal = String(val);
+        if (!seen.has(strVal)) {
+          seen.add(strVal);
+          result.push(strVal);
+        }
+      }
+    });
+    return result;
+  };
+
   const numInput = (field: keyof ProductionRecord, placeholder = '0') => (
     <input type="number" min="0" placeholder={placeholder}
       value={(form[field] as number) || ''}
@@ -858,6 +876,24 @@ export default function StatsPage() {
       onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
       className={inputCls} />
   );
+  // 带下拉建议的输入框（datalist 实现）
+  const textInputWithDatalist = (field: keyof ProductionRecord, placeholder = '') => {
+    const datalistId = `datalist-${field}`;
+    const options = getFieldOptions(field);
+    return (
+      <>
+        <input type="text" placeholder={placeholder} list={datalistId}
+          value={(form[field] as string) || ''}
+          onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
+          className={inputCls} />
+        {options.length > 0 && (
+          <datalist id={datalistId}>
+            {options.map((opt) => <option key={opt} value={opt} />)}
+          </datalist>
+        )}
+      </>
+    );
+  };
 
   /* ════ RENDER ════ */
   if (loading) {
@@ -1237,23 +1273,23 @@ export default function StatsPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">物料代码 <span className="text-red-400">*</span></label>
-                    {textInput('materialCode', 'H1.HK.2G.6023')}
+                    {textInputWithDatalist('materialCode', 'H1.HK.2G.6023')}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">规格</label>
-                    {textInput('spec', '400V680uF')}
+                    {textInputWithDatalist('spec', '400V680uF')}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">尺寸</label>
-                    {textInput('size', '35*60')}
+                    {textInputWithDatalist('size', '35*60')}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">流转单号 <span className="text-red-400">*</span></label>
-                    {textInput('workOrderNo', '2511001')}
+                    {textInputWithDatalist('workOrderNo', '2511001')}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">正箔电压</label>
-                    {textInput('positiveFoilVoltage', '560V')}
+                    {textInputWithDatalist('positiveFoilVoltage', '560V')}
                   </div>
                 </div>
               </div>
@@ -1336,11 +1372,11 @@ export default function StatsPage() {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">作业员</label>
-                    {textInput('operator')}
+                    {textInputWithDatalist('operator')}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">重工单号</label>
-                    {textInput('reworkOrderNo')}
+                    {textInputWithDatalist('reworkOrderNo')}
                   </div>
                   <div className="md:col-span-3">
                     <label className="block text-xs font-medium text-gray-500 mb-1">备注</label>
