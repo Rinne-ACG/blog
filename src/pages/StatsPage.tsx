@@ -910,7 +910,7 @@ export default function StatsPage() {
             <p>{searchQuery || Object.values(filterValues).some(v => v.size > 0) ? '没有找到匹配记录' : '暂无数据，请导入 Excel 或手动录入'}</p>
           </div>
         ) : (
-          <div className="max-h-[calc(100vh-280px)] overflow-auto rounded-xl border border-gray-100">
+          <div className="min-h-[400px] max-h-[calc(100vh-280px)] overflow-auto rounded-xl border border-gray-100">
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 z-10 bg-gray-50">
                 <tr>
