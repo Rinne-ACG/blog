@@ -47,14 +47,28 @@ export default function App() {
             <Route path="/tags" element={<TagsPage />} />
             <Route path="/tags/:tag" element={<TagsPage />} />
             <Route path="/about" element={<AboutPage />} />
-            <Route path="/gallery" element={<GalleryPage />} />
-            <Route path="/gallery/:album" element={<GalleryPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route
               path="/stats"
               element={
                 <AuthGuard>
                   <StatsPage />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/gallery"
+              element={
+                <AuthGuard>
+                  <GalleryPage />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/gallery/:album"
+              element={
+                <AuthGuard>
+                  <GalleryPage />
                 </AuthGuard>
               }
             />
