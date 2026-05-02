@@ -182,6 +182,119 @@ const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: numbe
 /* ═══════════════════════════════════════════════════
    主组件
 ═══════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════
+   筛选下拉子组件
+   - 独立 state 管理搜索词，不会互相干扰
+   - 所有值全部渲染，通过搜索框过滤
+   - e.stopPropagation() 防止冒泡触发表头排序
+═════════════════════════════════════════════════ */
+function FilterDropdown({
+  fieldKey,
+  uniqueVals,
+  selected,
+  onChange,
+  onClose,
+}: {
+  fieldKey: string;
+  uniqueVals: string[];
+  selected: Set<string>;
+  onChange: (field: string, newSelected: Set<string>) => void;
+  onClose: () => void;
+}) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const filtered = searchTerm.trim()
+    ? uniqueVals.filter(v => v.toLowerCase().includes(searchTerm.trim().toLowerCase()))
+    : uniqueVals;
+
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+
+  const allSelected = uniqueVals.length > 0 && selected.size === uniqueVals.length;
+
+  return (
+    <>
+      {/* 标题栏 */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
+        <span className="text-xs font-medium text-gray-600">
+          筛选（{selected.size}/{uniqueVals.length}）
+          {searchTerm && filtered.length !== uniqueVals.length && (
+            <span className="text-gray-400 ml-1">· 匹配{filtered.length}项</span>
+          )}
+        </span>
+        <div className="flex gap-1">
+          {selected.size > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onChange(fieldKey, new Set()); }}
+              className="text-xs text-indigo-600 hover:text-indigo-800"
+            >清除</button>
+          )}
+          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* 搜索框 */}
+      <div className="px-2 py-1.5 border-b border-gray-50">
+        <input
+          type="text"
+          placeholder="搜索筛选值..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          onClick={stop}
+          className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+      </div>
+
+      {/* 选项列表 */}
+      <div className="overflow-y-auto flex-1 py-1">
+        {filtered.length === 0 ? (
+          <div className="px-3 py-2 text-xs text-gray-400">{searchTerm ? '无匹配项' : '无可用选项'}</div>
+        ) : (
+          filtered.map((val) => (
+            <label
+              key={val}
+              className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer"
+              onClick={stop}
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(val)}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  const next = new Set(selected);
+                  next.has(val) ? next.delete(val) : next.add(val);
+                  onChange(fieldKey, next);
+                }}
+                className="rounded flex-shrink-0"
+              />
+              <span className="truncate text-xs">{val || '(空)'}</span>
+            </label>
+          ))
+        )}
+      </div>
+
+      {/* 全选/取消全选 */}
+      <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
+        <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 cursor-pointer" onClick={stop}>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < uniqueVals.length; }}
+            onChange={(e) => {
+              e.stopPropagation();
+              onChange(fieldKey, allSelected ? new Set() : new Set(uniqueVals));
+            }}
+            className="rounded"
+          />
+          全选/取消全选
+        </label>
+      </div>
+    </>
+  );
+}
+
 export default function StatsPage() {
   const navigate = useNavigate();
 
@@ -290,16 +403,8 @@ export default function StatsPage() {
     } else { setSortField(field); setSortDir('asc'); }
   };
 
-  const toggleFilterValue = (field: string, val: string) => {
-    setFilterValues((prev) => {
-      const s = new Set(prev[field] ?? []);
-      s.has(val) ? s.delete(val) : s.add(val);
-      return { ...prev, [field]: s };
-    });
-  };
-
-  const clearFilter = (field: string) => {
-    setFilterValues((prev) => ({ ...prev, [field]: new Set() }));
+  const handleFilterChange = (field: string, newSelected: Set<string>) => {
+    setFilterValues((prev) => ({ ...prev, [field]: newSelected }));
   };
 
   // 筛选栏引用
@@ -866,7 +971,6 @@ export default function StatsPage() {
                     const uniqueVals = isActions ? [] : getColumnUniqueValues(key as SortField);
                     const hasFilter = filterValues[key] && filterValues[key].size > 0 && filterValues[key].size < uniqueVals.length;
                     const showDropdown = filterOpen === key && !isActions;
-                    const selectedCount = filterValues[key]?.size ?? 0;
 
                     return (
                       <th key={key}
@@ -900,80 +1004,18 @@ export default function StatsPage() {
 
                         {/* 筛选下拉菜单 */}
                         {showDropdown && (
-                          <div ref={filterRef}
-                            className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg w-52 max-h-64 overflow-hidden flex flex-col"
+                          <div
+                            ref={filterRef}
+                            className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-72 overflow-hidden flex flex-col"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
-                              <span className="text-xs font-medium text-gray-600">筛选 ({selectedCount}/{uniqueVals.length})</span>
-                              <div className="flex gap-1">
-                                {selectedCount > 0 && (
-                                  <button onClick={() => clearFilter(key)} className="text-xs text-indigo-600 hover:text-indigo-800">清除</button>
-                                )}
-                                <button onClick={() => setFilterOpen(null)} className="text-gray-400 hover:text-gray-600">
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
-                                </button>
-                              </div>
-                            </div>
-                            <div className="overflow-y-auto flex-1 py-1">
-                              {uniqueVals.length === 0 ? (
-                                <div className="px-3 py-2 text-xs text-gray-400">无可用选项</div>
-                              ) : uniqueVals.length > 50 ? (
-                                <div className="px-3 py-2 text-xs text-gray-500">
-                                  <div className="mb-1 text-gray-400">共 {uniqueVals.length} 个值（勾选选中）</div>
-                                  <input
-                                    type="text"
-                                    placeholder="搜索..."
-                                    className="w-full px-2 py-1 text-xs border border-gray-200 rounded mb-1"
-                                    onChange={() => {}}
-                                  />
-                                  {uniqueVals.slice(0, 50).map((val) => (
-                                    <label key={val} className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={filterValues[key]?.has(val) ?? false}
-                                        onChange={() => toggleFilterValue(key, val)}
-                                        className="rounded"
-                                      />
-                                      <span className="truncate text-xs">{val || '(空)'}</span>
-                                    </label>
-                                  ))}
-                                  <div className="px-3 py-1 text-xs text-gray-400">...还有 {uniqueVals.length - 50} 个</div>
-                                </div>
-                              ) : (
-                                uniqueVals.map((val) => (
-                                  <label key={val} className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={filterValues[key]?.has(val) ?? false}
-                                      onChange={() => toggleFilterValue(key, val)}
-                                      className="rounded"
-                                    />
-                                    <span className="truncate text-xs">{val || '(空)'}</span>
-                                  </label>
-                                ))
-                              )}
-                            </div>
-                            <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
-                              <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedCount === uniqueVals.length}
-                                  ref={(el) => { if (el) el.indeterminate = selectedCount > 0 && selectedCount < uniqueVals.length; }}
-                                  onChange={() => {
-                                    if (selectedCount === uniqueVals.length) {
-                                      clearFilter(key);
-                                    } else {
-                                      setFilterValues((prev) => ({ ...prev, [key]: new Set(uniqueVals) }));
-                                    }
-                                  }}
-                                  className="rounded"
-                                />
-                                全选/取消全选
-                              </label>
-                            </div>
+                            <FilterDropdown
+                              fieldKey={key}
+                              uniqueVals={uniqueVals}
+                              selected={filterValues[key] ?? new Set()}
+                              onChange={handleFilterChange}
+                              onClose={() => setFilterOpen(null)}
+                            />
                           </div>
                         )}
                       </th>
