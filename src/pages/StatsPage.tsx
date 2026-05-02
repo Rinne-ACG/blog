@@ -655,7 +655,20 @@ export default function StatsPage() {
   };
 
   /* ── 记录 CRUD ── */
-  const openAdd = () => { setEditingId(null); setForm(emptyRecord()); setShowForm(true); };
+  const openAdd = () => {
+    const base = emptyRecord();
+    // 计算当前工作表最大序号 + 1
+    if (sheetRecords.length > 0) {
+      const maxSeq = sheetRecords.reduce((max, r) => {
+        const num = parseInt(String(r.seq).replace(/\D/g, ''), 10);
+        return !isNaN(num) && num > max ? num : max;
+      }, 0);
+      base.seq = String(maxSeq + 1);
+    }
+    setEditingId(null);
+    setForm(base);
+    setShowForm(true);
+  };
   const openEdit = (r: ProductionRecord) => { setEditingId(r.id); setForm({ ...r }); setShowForm(true); };
 
   const deleteRecord = async (id: string) => {
