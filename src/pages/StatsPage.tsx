@@ -313,7 +313,6 @@ export default function StatsPage() {
   /* ── 列筛选状态 ── */
   const [filterOpen, setFilterOpen] = useState<string | null>(null); // 当前打开筛选的列名
   const [filterValues, setFilterValues] = useState<Record<string, Set<string>>>({}); // 每列选中的值集合
-  const [filterBtnRect, setFilterBtnRect] = useState<DOMRect | null>(null); // 筛选按钮位置
 
   /* ── Sheet 重命名弹窗 ── */
   const [renamingSheet, setRenamingSheet] = useState<LocalSheet | null>(null);
@@ -911,10 +910,10 @@ export default function StatsPage() {
             <p>{searchQuery || Object.values(filterValues).some(v => v.size > 0) ? '没有找到匹配记录' : '暂无数据，请导入 Excel 或手动录入'}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <div className="max-h-[calc(100vh-280px)] overflow-auto rounded-xl border border-gray-100">
             <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-gray-50">
+              <thead className="sticky top-0 z-10 bg-gray-50">
+                <tr>
                   {[
                     { key: 'entryDate', label: '录入日期' },
                     { key: 'seq', label: '序号' },
@@ -952,7 +951,7 @@ export default function StatsPage() {
 
                     return (
                       <th key={key}
-                        className={`px-2 py-2 text-left font-semibold whitespace-nowrap border-b border-gray-100 ${isSorted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} ${!isActions ? 'hover:bg-gray-100 select-none' : ''}`}
+                        className={`relative px-2 py-2 text-left font-semibold whitespace-nowrap border-b border-gray-100 ${isSorted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} ${!isActions ? 'hover:bg-gray-100 select-none' : ''}`}
                       >
                         <div
                           className={`flex items-center gap-1 ${!isActions ? 'cursor-pointer' : ''}`}
@@ -972,13 +971,7 @@ export default function StatsPage() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (filterOpen === key) {
-                                  setFilterOpen(null);
-                                  setFilterBtnRect(null);
-                                } else {
-                                  setFilterOpen(key);
-                                  setFilterBtnRect(e.currentTarget.getBoundingClientRect());
-                                }
+                                setFilterOpen(filterOpen === key ? null : key);
                               }}
                               className={`ml-0.5 p-0.5 rounded text-[10px] ${hasFilter ? 'bg-indigo-100 text-indigo-600' : 'text-gray-400 hover:bg-gray-200'}`}
                               title="筛选"
@@ -990,6 +983,22 @@ export default function StatsPage() {
                             </button>
                           )}
                         </div>
+
+                        {/* 筛选下拉框 */}
+                        {filterOpen === key && (
+                          <div
+                            className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl w-56 h-72 overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <FilterDropdown
+                              fieldKey={key}
+                              uniqueVals={uniqueVals}
+                              selected={filterValues[key] ?? new Set()}
+                              onChange={handleFilterChange}
+                              onClose={() => setFilterOpen(null)}
+                            />
+                          </div>
+                        )}
                       </th>
                     );
                   })}
@@ -1046,28 +1055,6 @@ export default function StatsPage() {
               </tbody>
             </table>
 
-            {/* 固定定位的筛选下拉框 */}
-            {filterOpen && filterBtnRect && (() => {
-              const uniqueVals = getColumnUniqueValues(filterOpen as SortField);
-              return (
-                <div
-                  className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-xl w-56"
-                  style={{
-                    top: filterBtnRect.bottom + 4,
-                    left: filterBtnRect.left,
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <FilterDropdown
-                    fieldKey={filterOpen}
-                    uniqueVals={uniqueVals}
-                    selected={filterValues[filterOpen] ?? new Set()}
-                    onChange={handleFilterChange}
-                    onClose={() => { setFilterOpen(null); setFilterBtnRect(null); }}
-                  />
-                </div>
-              );
-            })()}
           </div>
         )}
       </div>
