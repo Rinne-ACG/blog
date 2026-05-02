@@ -348,13 +348,18 @@ export default function StatsPage() {
       defectLeakage: 'defectLeakage', defectHighCap: 'defectHighCap', defectLowCap: 'defectLowCap',
       defectDF: 'defectDF', operator: 'operator', notes: 'notes', reworkOrderNo: 'reworkOrderNo',
     };
-    const val = r[fieldMap[field] ?? field] ?? '';
+    const key = fieldMap[field] ?? field;
+    const val = r[key as keyof ProductionRecord];
     // 序号列按数字排序
     if (field === 'seq') {
       const na = Number(String(val).replace(/\D/g, ''));
-      return isNaN(na) ? val : na;
+      return isNaN(na) ? String(val) : na;
     }
-    return val;
+    // 确保返回 string | number 类型（排除 comments 等复杂对象）
+    if (typeof val === 'string' || typeof val === 'number') {
+      return val;
+    }
+    return String(val ?? '');
   };
 
   const filtered = sheetRecords
@@ -446,32 +451,6 @@ export default function StatsPage() {
   const closeCommentEditor = () => {
     setCommentTarget(null);
     setCommentText('');
-  };
-
-  // 获取单元格的值和显示文本
-  const getCellData = (r: ProductionRecord, field: keyof ProductionRecord): { value: string | number; display: string } => {
-    const fieldMap: Record<string, keyof ProductionRecord> = {
-      entryDate: 'entryDate', seq: 'seq', materialCode: 'materialCode', spec: 'spec',
-      size: 'size', workOrderNo: 'workOrderNo', positiveFoilVoltage: 'positiveFoilVoltage',
-      designQty: 'designQty', actualQty: 'actualQty', windingQty: 'windingQty',
-      goodQty: 'goodQty', loss: 'loss', firstBottomConvexShortBurstRate: 'firstBottomConvexShortBurstRate',
-      firstPassRate: 'firstPassRate', batchYieldRate: 'batchYieldRate',
-      defectShort: 'defectShort', defectBurst: 'defectBurst', defectBottomConvex: 'defectBottomConvex',
-      defectVoltage: 'defectVoltage', defectAppearance: 'defectAppearance',
-      defectLeakage: 'defectLeakage', defectHighCap: 'defectHighCap', defectLowCap: 'defectLowCap',
-      defectDF: 'defectDF', operator: 'operator', notes: 'notes', reworkOrderNo: 'reworkOrderNo',
-    };
-    const key = fieldMap[field] ?? field;
-    const val = r[key];
-
-    let display = '';
-    if (field === 'batchYieldRate') display = (val as number) > 0 ? `${val}%` : '—';
-    else if (field === 'loss') display = (val as number) >= 0 ? `+${val}` : `${val}` + '%';
-    else if (typeof val === 'number' && ['designQty', 'actualQty', 'windingQty', 'goodQty'].includes(field)) display = val.toLocaleString();
-    else if (typeof val === 'number' && !['loss', 'batchYieldRate'].includes(field)) display = `${val}%`;
-    else display = String(val ?? '');
-
-    return { value: val as string | number, display };
   };
 
   // 渲染带批注的单元格
