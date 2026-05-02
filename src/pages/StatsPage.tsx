@@ -547,41 +547,49 @@ export default function StatsPage() {
     let ignore = false;
 
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || ignore) return;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || ignore) return;
 
-      const { data: cloudSheets } = await supabase
-        .from('sheets')
-        .select('id, name, "order"')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      if (ignore) return;
-
-      if (!cloudSheets || cloudSheets.length === 0) {
-        // 首次使用，创建默认 Sheet
-        const { data: newSheet } = await supabase
+        const { data: cloudSheets, error } = await supabase
           .from('sheets')
-          .insert({ name: '工作表1', 'order': [], user_id: user.id })
           .select('id, name, "order"')
-          .single();
-        if (ignore) return;
-        if (newSheet) {
-          setLocalSheets([{ id: newSheet.id, name: newSheet.name }]);
-          setActiveSheetId(newSheet.id);
-          setSheetRecords([]);
-        }
-      } else {
-        const mapped: LocalSheet[] = cloudSheets.map((s) => ({
-          id: s.id,
-          name: s.name,
-        }));
-        setLocalSheets(mapped);
-        setActiveSheetId(mapped[0].id);
-        await loadRecords(mapped[0].id);
-      }
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true });
 
-      setLoading(false);
+        if (ignore) return;
+        if (error) throw error;
+
+        if (!cloudSheets || cloudSheets.length === 0) {
+          // 首次使用，创建默认 Sheet
+          const { data: newSheet, error: insertError } = await supabase
+            .from('sheets')
+            .insert({ name: '工作表1', 'order': [], user_id: user.id })
+            .select('id, name, "order"')
+            .single();
+          if (ignore) return;
+          if (insertError) throw insertError;
+          if (newSheet) {
+            setLocalSheets([{ id: newSheet.id, name: newSheet.name }]);
+            setActiveSheetId(newSheet.id);
+            setSheetRecords([]);
+            setLoading(false); // 没有记录需要加载，直接关闭 loading
+          }
+        } else {
+          const mapped: LocalSheet[] = cloudSheets.map((s) => ({
+            id: s.id,
+            name: s.name,
+          }));
+          setLocalSheets(mapped);
+          setActiveSheetId(mapped[0].id);
+          // loadRecords 内部会处理 loading 状态
+          await loadRecords(mapped[0].id);
+        }
+      } catch (err) {
+        console.error('初始化失败:', err);
+        setLoading(false);
+        showToast('加载数据失败，请检查网络连接');
+      }
     }
 
     init();
@@ -589,52 +597,74 @@ export default function StatsPage() {
   }, []);
 
   /* ── 加载某个 Sheet 的所有记录 ── */
-  const loadRecords = async (sheetId: string) => {
-    const { data } = await supabase
-      .from('records')
-      .select('*')
-      .eq('sheet_id', sheetId)
-      .order('entry_date', { ascending: false });
+  const loadRecords = async (sheetId: string, retryCount = 0) => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('records')
+        .select('*')
+        .eq('sheet_id', sheetId)
+        .order('entry_date', { ascending: false });
 
-    setSheetRecords(
-      (data ?? []).map((r) => ({
-        id: r.id,
-        entryDate: r.entry_date ?? '',
-        seq: r.seq ?? '',
-        materialCode: r.material_code ?? '',
-        spec: r.spec ?? '',
-        size: r.size ?? '',
-        workOrderNo: r.work_order_no ?? '',
-        positiveFoilVoltage: r.positive_foil_voltage ?? '',
-        designQty: r.design_qty ?? 0,
-        actualQty: r.actual_qty ?? 0,
-        windingQty: r.winding_qty ?? 0,
-        goodQty: r.good_qty ?? 0,
-        loss: Number(r.loss) || 0,
-        firstBottomConvexShortBurstRate: Number(r.first_bottom_convex_short_burst_rate) || 0,
-        firstPassRate: Number(r.first_pass_rate) || 0,
-        batchYieldRate: Number(r.batch_yield_rate) || 0,
-        defectShort: r.defect_short ?? 0,
-        defectBurst: r.defect_burst ?? 0,
-        defectBottomConvex: r.defect_bottom_convex ?? 0,
-        defectVoltage: r.defect_voltage ?? 0,
-        defectAppearance: r.defect_appearance ?? 0,
-        defectLeakage: r.defect_leakage ?? 0,
-        defectHighCap: r.defect_high_cap ?? 0,
-        defectLowCap: r.defect_low_cap ?? 0,
-        defectDF: r.defect_df ?? 0,
-        operator: r.operator ?? '',
-        notes: r.notes ?? '',
-        reworkOrderNo: r.rework_order_no ?? '',
-        comments: r.comments as Record<string, string> | undefined,
-      }))
-    );
+      if (error) {
+        throw error;
+      }
+
+      setSheetRecords(
+        (data ?? []).map((r) => ({
+          id: r.id,
+          entryDate: r.entry_date ?? '',
+          seq: r.seq ?? '',
+          materialCode: r.material_code ?? '',
+          spec: r.spec ?? '',
+          size: r.size ?? '',
+          workOrderNo: r.work_order_no ?? '',
+          positiveFoilVoltage: r.positive_foil_voltage ?? '',
+          designQty: r.design_qty ?? 0,
+          actualQty: r.actual_qty ?? 0,
+          windingQty: r.winding_qty ?? 0,
+          goodQty: r.good_qty ?? 0,
+          loss: Number(r.loss) || 0,
+          firstBottomConvexShortBurstRate: Number(r.first_bottom_convex_short_burst_rate) || 0,
+          firstPassRate: Number(r.first_pass_rate) || 0,
+          batchYieldRate: Number(r.batch_yield_rate) || 0,
+          defectShort: r.defect_short ?? 0,
+          defectBurst: r.defect_burst ?? 0,
+          defectBottomConvex: r.defect_bottom_convex ?? 0,
+          defectVoltage: r.defect_voltage ?? 0,
+          defectAppearance: r.defect_appearance ?? 0,
+          defectLeakage: r.defect_leakage ?? 0,
+          defectHighCap: r.defect_high_cap ?? 0,
+          defectLowCap: r.defect_low_cap ?? 0,
+          defectDF: r.defect_df ?? 0,
+          operator: r.operator ?? '',
+          notes: r.notes ?? '',
+          reworkOrderNo: r.rework_order_no ?? '',
+          comments: r.comments as Record<string, string> | undefined,
+        }))
+      );
+      setLoading(false);
+    } catch (err: any) {
+      console.error('加载记录失败:', err);
+      setLoading(false);
+
+      // 网络错误时重试一次（最多重试1次）
+      if (retryCount < 1 && (err.message?.includes('Failed to fetch') || err.message?.includes('ERR_CONNECTION_CLOSED'))) {
+        console.log(`网络错误，1秒后重试... (${retryCount + 1}/1)`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return loadRecords(sheetId, retryCount + 1);
+      }
+
+      showToast('加载数据失败，请检查网络连接');
+    }
   };
 
   /* ── Sheet 切换 ── */
   const switchSheet = async (sheet: LocalSheet) => {
+    if (sheet.id === activeSheetId) return; // 已经是当前 sheet，不重复加载
     setActiveSheetId(sheet.id);
     setSearchQuery('');
+    setSheetRecords([]); // 先清空当前记录，避免显示旧数据
     await loadRecords(sheet.id);
   };
 
