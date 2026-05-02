@@ -5,7 +5,13 @@ import { supabase } from '../lib/supabase';
 import type { ProductionRecord } from '../types';
 
 /* ─── 工具函数 ─── */
-const generateId = () => Math.random().toString(36).slice(2, 11);
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const calcRate = (part: number, total: number) =>
@@ -26,7 +32,7 @@ const calcDerived = (f: ProductionRecord): ProductionRecord => {
 };
 
 const emptyRecord = (): ProductionRecord => ({
-  id: generateId(),
+  id: generateUUID(),
   entryDate: new Date().toISOString().slice(0, 10),
   seq: '', materialCode: '', spec: '', size: '', workOrderNo: '',
   positiveFoilVoltage: '', designQty: 0, actualQty: 0, windingQty: 0,
@@ -104,7 +110,7 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
     }
 
     const base: ProductionRecord = {
-      id: generateId(),
+      id: generateUUID(),
       entryDate,
       seq: strFn(g(['序号', 'seq'])),
       materialCode: strFn(g(['物料代码', 'materialCode'])),
@@ -403,7 +409,7 @@ export default function StatsPage() {
 
     const recordCloudData = {
       sheet_id: activeSheetId,
-      entry_date: final.entryDate,
+      entry_date: final.entryDate || new Date().toISOString().slice(0, 10),  // 空日期使用今天
       seq: final.seq,
       material_code: final.materialCode,
       spec: final.spec,
@@ -441,7 +447,7 @@ export default function StatsPage() {
       // 新增
       const { data: inserted } = await supabase
         .from('records')
-        .insert({ ...recordCloudData, id: generateId() } as Record<string, unknown>)
+        .insert({ ...recordCloudData, id: generateUUID() } as Record<string, unknown>)
         .select()
         .single();
       if (inserted) {
@@ -487,10 +493,11 @@ export default function StatsPage() {
           }
 
           // 插入记录
+          const today = new Date().toISOString().slice(0, 10);
           const cloudRecords = records.map((r) => ({
-            id: generateId(),
+            id: generateUUID(),
             sheet_id: localSheet!.id,
-            entry_date: r.entryDate,
+            entry_date: r.entryDate || today,  // 空日期使用今天
             seq: r.seq,
             material_code: r.materialCode,
             spec: r.spec,
