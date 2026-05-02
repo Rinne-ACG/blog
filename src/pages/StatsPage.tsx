@@ -211,27 +211,76 @@ export default function StatsPage() {
       try {
         const data = new Uint8Array(evt.target!.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array', cellDates: true });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
-        if (!json.length) { alert('Excel 中没有数据'); return; }
+
+        // 允许用户选 Sheet（暂取第一个有数据的 Sheet）
+        let ws = wb.Sheets[wb.SheetNames[0]];
+
+        // 读取原始二维数组，找到真正的表头行（第一个非空行）
+        const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 }) as unknown[][];
+        if (raw.length < 2) { alert('Excel 中没有数据'); return; }
+
+        // 找到第一个有内容的行作为表头（跳过完全空的行）
+        let headerRowIdx = 0;
+        for (let i = 0; i < raw.length; i++) {
+          if (raw[i] && (raw[i] as unknown[]).some((c) => c !== null && c !== undefined && c !== '')) {
+            headerRowIdx = i;
+            break;
+          }
+        }
+
+        // 把表头中的换行符去掉，统一成纯净列名
+        const headers = (raw[headerRowIdx] as unknown[]).map((h) =>
+          h == null ? '' : String(h).replace(/\n|\r/g, '').trim()
+        );
+
+        // 用处理好的表头重新解析数据行
+        const dataRows = raw.slice(headerRowIdx + 1);
+        const json: Record<string, unknown>[] = dataRows
+          .filter((row) => row && (row as unknown[]).some((c) => c !== null && c !== undefined && c !== ''))
+          .map((row) => {
+            const obj: Record<string, unknown> = {};
+            headers.forEach((h, i) => {
+              if (h) obj[h] = (row as unknown[])[i];
+            });
+            return obj;
+          });
+
+        if (!json.length) { alert('Excel 中没有有效数据行'); return; }
 
         const mapped: ProductionRecord[] = json.map((row) => {
+          // g() 依次尝试多个候选列名，返回第一个非空值
           const g = (keys: string[]) => {
-            for (const k of keys) if (row[k] !== undefined && row[k] !== '') return row[k];
+            for (const k of keys) {
+              if (row[k] !== undefined && row[k] !== null && row[k] !== '') return row[k];
+            }
             return '';
           };
+
+          // 日期处理：Excel 日期可能是数字序列号或字符串
+          let entryDate = '';
+          const rawDate = g(['日期', '录入日期', 'entryDate']);
+          if (rawDate instanceof Date) {
+            entryDate = rawDate.toISOString().slice(0, 10);
+          } else if (typeof rawDate === 'number') {
+            // Excel 序列号转日期
+            const d = XLSX.SSF.parse_date_code(rawDate);
+            entryDate = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+          } else {
+            entryDate = str(rawDate).slice(0, 10);
+          }
+
           const base: ProductionRecord = {
             id: generateId(),
-            entryDate: str(g(['录入日期', 'entryDate'])).slice(0, 10),
+            entryDate,
             seq: str(g(['序号', 'seq'])),
             materialCode: str(g(['物料代码', 'materialCode'])),
             spec: str(g(['规格', 'spec'])),
             size: str(g(['尺寸', 'size'])),
             workOrderNo: str(g(['流转单号', 'workOrderNo'])),
-            positiveFoilVoltage: str(g(['正箔电压', 'positiveFoilVoltage'])),
-            designQty: num(g(['设计数量', 'designQty'])),
-            actualQty: 0, // 由 calcDerived 填充
-            windingQty: num(g(['卷绕数', 'windingQty'])),
+            positiveFoilVoltage: str(g(['正箔电压', '正箔\n电压', 'positiveFoilVoltage'])),
+            designQty: num(g(['设计数量', '设计\n数量', 'designQty'])),
+            actualQty: 0, // 由 calcDerived 自动计算
+            windingQty: num(g(['卷绕数', '卷绕\n数量', 'windingQty'])),
             goodQty: num(g(['良品数', 'goodQty'])),
             loss: 0,
             firstBottomConvexShortBurstRate: 0,
