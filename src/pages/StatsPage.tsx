@@ -314,6 +314,11 @@ export default function StatsPage() {
   const [filterOpen, setFilterOpen] = useState<string | null>(null); // 当前打开筛选的列名
   const [filterValues, setFilterValues] = useState<Record<string, Set<string>>>({}); // 每列选中的值集合
 
+  /* ── 批注状态 ── */
+  const [commentTarget, setCommentTarget] = useState<{ recordId: string; field: string } | null>(null); // 当前编辑批注的目标
+  const [commentText, setCommentText] = useState(''); // 当前批注内容
+  const [hoveredComment, setHoveredComment] = useState<{ recordId: string; field: string; x: number; y: number } | null>(null); // 悬停显示批注
+
   /* ── Sheet 重命名弹窗 ── */
   const [renamingSheet, setRenamingSheet] = useState<LocalSheet | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -397,6 +402,114 @@ export default function StatsPage() {
 
   const handleFilterChange = (field: string, newSelected: Set<string>) => {
     setFilterValues((prev) => ({ ...prev, [field]: newSelected }));
+  };
+
+  /* ── 批注操作 ── */
+  const openCommentEditor = (recordId: string, field: string, currentComment: string = '') => {
+    setCommentTarget({ recordId, field });
+    setCommentText(currentComment);
+  };
+
+  const saveComment = async () => {
+    if (!commentTarget) return;
+
+    const record = sheetRecords.find(r => r.id === commentTarget.recordId);
+    if (!record) return;
+
+    const currentComments = record.comments || {};
+    const updatedComments = { ...currentComments };
+
+    if (commentText.trim()) {
+      updatedComments[commentTarget.field] = commentText.trim();
+    } else {
+      delete updatedComments[commentTarget.field];
+    }
+
+    // 更新本地状态
+    setSheetRecords(prev => prev.map(r =>
+      r.id === commentTarget.recordId
+        ? { ...r, comments: Object.keys(updatedComments).length > 0 ? updatedComments : undefined }
+        : r
+    ));
+
+    // 保存到数据库
+    await supabase
+      .from('records')
+      .update({ comments: Object.keys(updatedComments).length > 0 ? updatedComments : null })
+      .eq('id', commentTarget.recordId);
+
+    setCommentTarget(null);
+    setCommentText('');
+    showToast(commentText.trim() ? '批注已保存' : '批注已删除');
+  };
+
+  const closeCommentEditor = () => {
+    setCommentTarget(null);
+    setCommentText('');
+  };
+
+  // 获取单元格的值和显示文本
+  const getCellData = (r: ProductionRecord, field: keyof ProductionRecord): { value: string | number; display: string } => {
+    const fieldMap: Record<string, keyof ProductionRecord> = {
+      entryDate: 'entryDate', seq: 'seq', materialCode: 'materialCode', spec: 'spec',
+      size: 'size', workOrderNo: 'workOrderNo', positiveFoilVoltage: 'positiveFoilVoltage',
+      designQty: 'designQty', actualQty: 'actualQty', windingQty: 'windingQty',
+      goodQty: 'goodQty', loss: 'loss', firstBottomConvexShortBurstRate: 'firstBottomConvexShortBurstRate',
+      firstPassRate: 'firstPassRate', batchYieldRate: 'batchYieldRate',
+      defectShort: 'defectShort', defectBurst: 'defectBurst', defectBottomConvex: 'defectBottomConvex',
+      defectVoltage: 'defectVoltage', defectAppearance: 'defectAppearance',
+      defectLeakage: 'defectLeakage', defectHighCap: 'defectHighCap', defectLowCap: 'defectLowCap',
+      defectDF: 'defectDF', operator: 'operator', notes: 'notes', reworkOrderNo: 'reworkOrderNo',
+    };
+    const key = fieldMap[field] ?? field;
+    const val = r[key];
+
+    let display = '';
+    if (field === 'batchYieldRate') display = (val as number) > 0 ? `${val}%` : '—';
+    else if (field === 'loss') display = (val as number) >= 0 ? `+${val}` : `${val}` + '%';
+    else if (typeof val === 'number' && ['designQty', 'actualQty', 'windingQty', 'goodQty'].includes(field)) display = val.toLocaleString();
+    else if (typeof val === 'number' && !['loss', 'batchYieldRate'].includes(field)) display = `${val}%`;
+    else display = String(val ?? '');
+
+    return { value: val as string | number, display };
+  };
+
+  // 渲染带批注的单元格
+  const renderCommentCell = (
+    r: ProductionRecord,
+    field: keyof ProductionRecord,
+    display: string,
+    extraClass: string = ''
+  ) => {
+    const hasComment = r.comments && r.comments[field];
+    return (
+      <td
+        className={`relative px-2 py-1.5 text-center cursor-pointer hover:bg-yellow-50/50 transition-colors ${extraClass}`}
+        onDoubleClick={() => openCommentEditor(r.id, field, r.comments?.[field] || '')}
+        onMouseEnter={(e) => {
+          if (hasComment) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setHoveredComment({
+              recordId: r.id,
+              field,
+              x: rect.left,
+              y: rect.bottom + 4,
+            });
+          }
+        }}
+        onMouseLeave={() => setHoveredComment(null)}
+      >
+        {display}
+        {/* 批注指示器（红色三角） */}
+        {hasComment && (
+          <span className="absolute top-0.5 right-0.5 text-red-500 leading-none">
+            <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M0 0L12 0L12 12Z" />
+            </svg>
+          </span>
+        )}
+      </td>
+    );
   };
 
   /* ── 汇总 ── */
@@ -488,6 +601,7 @@ export default function StatsPage() {
         operator: r.operator ?? '',
         notes: r.notes ?? '',
         reworkOrderNo: r.rework_order_no ?? '',
+        comments: r.comments as Record<string, string> | undefined,
       }))
     );
   };
@@ -772,6 +886,22 @@ export default function StatsPage() {
     );
   }
 
+  // 渲染批注气泡
+  const renderCommentBubble = () => {
+    if (!hoveredComment) return null;
+    const record = sheetRecords.find(r => r.id === hoveredComment.recordId);
+    const comment = record?.comments?.[hoveredComment.field];
+    if (!comment) return null;
+    return (
+      <div
+        className="fixed z-50 px-3 py-2 text-xs text-white bg-gray-800 rounded-lg shadow-xl whitespace-normal max-w-xs"
+        style={{ left: hoveredComment.x, top: hoveredComment.y }}
+      >
+        {comment}
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-full mx-auto px-4 py-8">
 
@@ -1007,33 +1137,34 @@ export default function StatsPage() {
               <tbody>
                 {filtered.map((r, i) => (
                   <tr key={r.id} className={`group hover:bg-indigo-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                    <td className="px-2 py-1.5 text-center whitespace-nowrap">{r.entryDate}</td>
-                    <td className="px-2 py-1.5 text-center">{r.seq}</td>
-                    <td className="px-2 py-1.5 text-center font-medium text-gray-800">{r.materialCode}</td>
-                    <td className="px-2 py-1.5 text-center">{r.spec}</td>
-                    <td className="px-2 py-1.5 text-center">{r.size}</td>
-                    <td className="px-2 py-1.5 text-center">{r.workOrderNo}</td>
-                    <td className="px-2 py-1.5 text-center">{r.positiveFoilVoltage}</td>
-                    <td className="px-2 py-1.5 text-center">{r.designQty.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center font-medium text-indigo-600">{r.actualQty.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center">{r.windingQty.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center font-medium text-green-600">{r.goodQty.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center">{r.loss >= 0 ? `+${r.loss}` : r.loss}%</td>
-                    <td className="px-2 py-1.5 text-center text-red-500">{r.firstBottomConvexShortBurstRate}%</td>
-                    <td className="px-2 py-1.5 text-center text-blue-600">{r.firstPassRate}%</td>
-                    <td className="px-2 py-1.5 text-center">{r.batchYieldRate > 0 ? `${r.batchYieldRate}%` : '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectShort || '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectBurst || '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectBottomConvex || '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectVoltage || '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectAppearance || '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectLeakage || '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectHighCap || '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectLowCap || '—'}</td>
-                    <td className="px-2 py-1.5 text-center">{r.defectDF || '—'}</td>
+                    {renderCommentCell(r, 'entryDate', r.entryDate, 'whitespace-nowrap')}
+                    {renderCommentCell(r, 'seq', r.seq)}
+                    {renderCommentCell(r, 'materialCode', r.materialCode, 'font-medium text-gray-800')}
+                    {renderCommentCell(r, 'spec', r.spec)}
+                    {renderCommentCell(r, 'size', r.size)}
+                    {renderCommentCell(r, 'workOrderNo', r.workOrderNo)}
+                    {renderCommentCell(r, 'positiveFoilVoltage', r.positiveFoilVoltage)}
+                    {renderCommentCell(r, 'designQty', r.designQty.toLocaleString())}
+                    {renderCommentCell(r, 'actualQty', r.actualQty.toLocaleString(), 'font-medium text-indigo-600')}
+                    {renderCommentCell(r, 'windingQty', r.windingQty.toLocaleString())}
+                    {renderCommentCell(r, 'goodQty', r.goodQty.toLocaleString(), 'font-medium text-green-600')}
+                    {renderCommentCell(r, 'loss', r.loss >= 0 ? `+${r.loss}` : `${r.loss}` + '%')}
+                    {renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${r.firstBottomConvexShortBurstRate}%`, 'text-red-500')}
+                    {renderCommentCell(r, 'firstPassRate', `${r.firstPassRate}%`, 'text-blue-600')}
+                    {renderCommentCell(r, 'batchYieldRate', r.batchYieldRate > 0 ? `${r.batchYieldRate}%` : '—')}
+                    {renderCommentCell(r, 'defectShort', r.defectShort ? String(r.defectShort) : '—')}
+                    {renderCommentCell(r, 'defectBurst', r.defectBurst ? String(r.defectBurst) : '—')}
+                    {renderCommentCell(r, 'defectBottomConvex', r.defectBottomConvex ? String(r.defectBottomConvex) : '—')}
+                    {renderCommentCell(r, 'defectVoltage', r.defectVoltage ? String(r.defectVoltage) : '—')}
+                    {renderCommentCell(r, 'defectAppearance', r.defectAppearance ? String(r.defectAppearance) : '—')}
+                    {renderCommentCell(r, 'defectLeakage', r.defectLeakage ? String(r.defectLeakage) : '—')}
+                    {renderCommentCell(r, 'defectHighCap', r.defectHighCap ? String(r.defectHighCap) : '—')}
+                    {renderCommentCell(r, 'defectLowCap', r.defectLowCap ? String(r.defectLowCap) : '—')}
+                    {renderCommentCell(r, 'defectDF', r.defectDF ? String(r.defectDF) : '—')}
+                    {/* 作业员和备注不支持批注，保持原样 */}
                     <td className="px-2 py-1.5">{r.operator}</td>
                     <td className="px-2 py-1.5 max-w-[120px] truncate">{r.notes}</td>
-                    <td className="px-2 py-1.5 text-center">{r.reworkOrderNo}</td>
+                    {renderCommentCell(r, 'reworkOrderNo', r.reworkOrderNo)}
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => openEdit(r)} className="p-1 text-indigo-500 hover:text-indigo-700" title="编辑">
@@ -1058,6 +1189,40 @@ export default function StatsPage() {
           </div>
         )}
       </div>
+
+      {/* ── 批注编辑弹窗 ── */}
+      {commentTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">
+                编辑批注 - {commentTarget.field}
+              </h2>
+              <button onClick={closeCommentEditor} className="p-1 text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6">
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="请输入批注内容..."
+                rows={4}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
+              <button onClick={closeCommentEditor} className="px-5 py-2 text-sm text-gray-600 hover:text-gray-800 transition">取消</button>
+              <button onClick={saveComment} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+                保存批注
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 录入/编辑表单弹窗 ── */}
       {showForm && (
@@ -1221,6 +1386,9 @@ export default function StatsPage() {
           </div>
         </div>
       )}
+
+      {/* 批注气泡 */}
+      {renderCommentBubble()}
     </div>
   );
 }

@@ -57,4 +57,7 @@ export interface ProductionRecord {
   operator: string;        // 作业员
   notes: string;           // 备注
   reworkOrderNo: string;   // 重工单号
+
+  // 批注（格式：{ "fieldName": "批注内容" }）
+  comments?: Record<string, string>;
 }
