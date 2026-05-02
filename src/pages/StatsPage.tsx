@@ -479,6 +479,10 @@ export default function StatsPage() {
           const records = parseSheetRecords(ws, num, str);
           if (!records.length) continue;
 
+          // 过滤必须有流转单号的记录
+          const validRecords = records.filter((r) => r.workOrderNo && r.workOrderNo.trim() !== '');
+          if (!validRecords.length) continue;
+
           // 找到或创建同名 sheet
           let localSheet = localSheets.find((s) => s.name === sheetName);
           if (!localSheet) {
@@ -494,7 +498,7 @@ export default function StatsPage() {
 
           // 插入记录
           const today = new Date().toISOString().slice(0, 10);
-          const cloudRecords = records.map((r) => ({
+          const cloudRecords = validRecords.map((r) => ({
             id: generateUUID(),
             sheet_id: localSheet!.id,
             entry_date: r.entryDate || today,  // 空日期使用今天
@@ -527,7 +531,7 @@ export default function StatsPage() {
           }));
 
           await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
-          totalCount += records.length;
+          totalCount += validRecords.length;
 
           // 如果当前在导入的 sheet 上，更新记录
           if (activeSheetId === localSheet.id) {
