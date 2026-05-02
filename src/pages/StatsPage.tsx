@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 import { supabase } from '../lib/supabase';
 import type { ProductionRecord } from '../types';
 
@@ -51,45 +52,158 @@ interface LocalSheet {
 }
 
 /* ═══════════════════════════════════════════════════
+   Excel 原生批注解析
+═══════════════════════════════════════════════════ */
+// 列字母转数字 (A=0, B=1, ..., Z=25, AA=26, ...)
+const colLetterToIndex = (col: string): number => {
+  let result = 0;
+  for (let i = 0; i < col.length; i++) {
+    result = result * 26 + (col.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+  }
+  return result - 1;
+};
+
+// 单元格地址解析 (如 "K3" -> { row: 2, col: 10 })
+const parseCellRef = (ref: string): { row: number; col: number } | null => {
+  const match = ref.match(/^([A-Za-z]+)(\d+)$/);
+  if (!match) return null;
+  return {
+    col: colLetterToIndex(match[1].toUpperCase()),
+    row: parseInt(match[2], 10) - 1, // 转为 0-based
+  };
+};
+
+// 解析 Excel 原生批注 XML
+// 返回 Map: key = "行索引,列索引", value = 批注内容
+const parseExcelNativeComments = async (
+  fileBuffer: ArrayBuffer,
+  sheetIndex: number
+): Promise<Map<string, string>> => {
+  const comments = new Map<string, string>();
+  
+  try {
+    const zip = await JSZip.loadAsync(fileBuffer);
+    const commentFileName = `xl/comments${sheetIndex + 1}.xml`;
+    const commentFile = zip.file(commentFileName);
+    
+    if (!commentFile) {
+      return comments;
+    }
+    
+    const content = await commentFile.async('string');
+    
+    // 解析批注 XML
+    // 结构: <comment ref="K3"><text><r><t>内容</t></r></text></comment>
+    const commentRegex = /<comment ref="([^"]+)"[^>]*>([\s\S]*?)<\/comment>/g;
+    let match;
+    
+    while ((match = commentRegex.exec(content)) !== null) {
+      const ref = match[1];
+      const textContent = match[2];
+      
+      // 提取 <t> 标签内容（可能有多个）
+      const textMatches = textContent.match(/<t[^>]*>([^<]*)<\/t>/g);
+      let text = textMatches 
+        ? textMatches.map(t => t.replace(/<[^>]+>/g, '')).join('').trim()
+        : '';
+      
+      // 移除 "Administrator:" 前缀
+      text = text.replace(/^Administrator:\s*/, '');
+      // 处理换行符
+      text = text.replace(/&#10;/g, '\n').replace(/&#13;/g, '');
+      
+      if (text) {
+        const cellRef = parseCellRef(ref);
+        if (cellRef) {
+          const key = `${cellRef.row},${cellRef.col}`;
+          comments.set(key, text);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('解析 Excel 原生批注失败:', err);
+  }
+  
+  return comments;
+};
+
+/* ═══════════════════════════════════════════════════
    Excel 导入工具
 ═══════════════════════════════════════════════════ */
 const num = (v: unknown) => Number(v) || 0;
 const str = (v: unknown) => String(v ?? '');
 
-function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof str) {
+function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof str, rowComments: Map<string, string>) {
   const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 }) as unknown[][];
   if (raw.length < 2) return [];
 
   // 找表头行（必须包含至少3个业务关键字）
   const HEADER_KEYWORDS = ['日期', '序号', '物料代码', '规格', '流转单号', '良品数'];
-  let headerRowIdx = -1;
+  let foundHeaderRowIdx = -1;
   for (let i = 0; i < Math.min(raw.length, 10); i++) {
     if (!raw[i]) continue;
     const rowStrs = (raw[i] as unknown[]).map((c) =>
       c == null ? '' : String(c).replace(/\n|\r/g, '').trim()
     );
     if (HEADER_KEYWORDS.filter((kw) => rowStrs.includes(kw)).length >= 3) {
-      headerRowIdx = i; break;
+      foundHeaderRowIdx = i; break;
     }
   }
-  if (headerRowIdx === -1) {
+  if (foundHeaderRowIdx === -1) {
     for (let i = 0; i < raw.length; i++) {
       if (raw[i] && (raw[i] as unknown[]).some((c) => c != null && c !== '')) {
-        headerRowIdx = i; break;
+        foundHeaderRowIdx = i; break;
       }
     }
   }
-  if (headerRowIdx === -1) return [];
+  if (foundHeaderRowIdx === -1) return [];
 
-  const headers = (raw[headerRowIdx] as unknown[]).map((h) =>
+  const headers = (raw[foundHeaderRowIdx] as unknown[]).map((h) =>
     h == null ? '' : String(h).replace(/\n|\r/g, '').trim()
   );
 
-  const dataRows = raw.slice(headerRowIdx + 1).filter(
+  // 构建列名到索引的映射
+  const headerColIndexMap: Record<string, number> = {};
+  headers.forEach((h, i) => { if (h) headerColIndexMap[h] = i; });
+
+  // 字段名到列索引的映射（用于批注关联）
+  const fieldToColIdx: Record<string, number> = {
+    entryDate: headerColIndexMap['录入日期'] ?? -1,
+    seq: headerColIndexMap['序号'] ?? -1,
+    materialCode: headerColIndexMap['物料代码'] ?? -1,
+    spec: headerColIndexMap['规格'] ?? -1,
+    size: headerColIndexMap['尺寸'] ?? -1,
+    workOrderNo: headerColIndexMap['流转单号'] ?? -1,
+    positiveFoilVoltage: headerColIndexMap['正箔电压'] ?? headerColIndexMap['正箔\n电压'] ?? -1,
+    designQty: headerColIndexMap['设计数量'] ?? headerColIndexMap['设计\n数量'] ?? -1,
+    actualQty: headerColIndexMap['实际此单总数'] ?? -1,
+    windingQty: headerColIndexMap['卷绕数'] ?? headerColIndexMap['卷绕\n数量'] ?? -1,
+    goodQty: headerColIndexMap['良品数'] ?? -1,
+    loss: headerColIndexMap['损耗'] ?? -1,
+    firstBottomConvexShortBurstRate: headerColIndexMap['一次底凸、短路、爆破率'] ?? headerColIndexMap['一次底凸短路爆破率'] ?? -1,
+    firstPassRate: headerColIndexMap['一次\n直通率'] ?? headerColIndexMap['一次直通率'] ?? -1,
+    batchYieldRate: headerColIndexMap['整批良率'] ?? -1,
+    defectShort: headerColIndexMap['短路'] ?? -1,
+    defectBurst: headerColIndexMap['爆破'] ?? -1,
+    defectBottomConvex: headerColIndexMap['底凸'] ?? -1,
+    defectVoltage: headerColIndexMap['耐压'] ?? -1,
+    defectAppearance: headerColIndexMap['外观'] ?? -1,
+    defectLeakage: headerColIndexMap['漏电'] ?? -1,
+    defectHighCap: headerColIndexMap['高容'] ?? -1,
+    defectLowCap: headerColIndexMap['低容'] ?? -1,
+    defectDF: headerColIndexMap['DF'] ?? -1,
+    operator: headerColIndexMap['作业员'] ?? -1,
+    notes: headerColIndexMap['备注'] ?? -1,
+    reworkOrderNo: headerColIndexMap['重工单号'] ?? -1,
+  };
+
+  // 过滤数据行（从表头后开始）
+  const dataStartIdx = foundHeaderRowIdx + 1;
+  const dataRows = raw.slice(dataStartIdx).filter(
     (row) => row && (row as unknown[]).some((c) => c != null && c !== '')
   );
 
-  return dataRows.map((row): ProductionRecord => {
+  return dataRows.map((row, dataRowIdx): ProductionRecord => {
     const obj: Record<string, unknown> = {};
     headers.forEach((h, i) => { if (h) obj[h] = (row as unknown[])[i]; });
 
@@ -140,15 +254,34 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
       reworkOrderNo: strFn(g(['重工单号', 'reworkOrderNo'])),
     };
 
-    // 解析批注
+    // 解析批注：从 Excel 原生批注和备注列两个来源收集
+    const comments: Record<string, string> = {};
+
+    // 1. 从备注列获取批注（原有逻辑）
     const commentsStr = strFn(g(['批注', 'comments']));
-    const comments = parseComments(commentsStr);
+    const parsedFromNotes = parseComments(commentsStr);
+    if (parsedFromNotes) {
+      Object.assign(comments, parsedFromNotes);
+    }
+
+    // 2. 从 Excel 原生批注获取（新增逻辑）
+    // 批注单元格地址中的行号是 1-based，需要减1转为 0-based（与 dataRowIdx 对应）
+    const excelRowIdx = dataStartIdx + dataRowIdx; // 在整个 sheet 中的行索引（0-based）
+    Object.entries(fieldToColIdx).forEach(([field, colIdx]) => {
+      if (colIdx >= 0) {
+        const key = `${excelRowIdx},${colIdx}`;
+        const nativeComment = rowComments.get(key);
+        if (nativeComment) {
+          comments[field] = nativeComment;
+        }
+      }
+    });
 
     const derived = calcDerived(base);
     return {
       ...derived,
       batchYieldRate: derived.batchYieldRate || calcRate(derived.goodQty, derived.actualQty),
-      comments,
+      comments: Object.keys(comments).length > 0 ? comments : undefined,
     };
   });
 }
@@ -821,15 +954,22 @@ export default function StatsPage() {
     reader.onload = async (evt) => {
       try {
         const data = new Uint8Array(evt.target!.result as ArrayBuffer);
+        const fileBuffer = evt.target!.result as ArrayBuffer;
         const wb = XLSX.read(data, { type: 'array', cellDates: true });
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
         let totalCount = 0;
 
-        for (const sheetName of wb.SheetNames) {
+        for (let sheetIdx = 0; sheetIdx < wb.SheetNames.length; sheetIdx++) {
+          const sheetName = wb.SheetNames[sheetIdx];
           const ws = wb.Sheets[sheetName];
-          const records = parseSheetRecords(ws, num, str);
+          
+          // 先解析 Excel 原生批注
+          const rowComments = await parseExcelNativeComments(fileBuffer, sheetIdx);
+          
+          // 解析工作表记录，传入批注数据
+          const records = parseSheetRecords(ws, num, str, rowComments);
           if (!records.length) continue;
 
           // 过滤必须有流转单号的记录
