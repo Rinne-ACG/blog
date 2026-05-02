@@ -206,12 +206,10 @@ function FilterDropdown({
     ? uniqueVals.filter(v => v.toLowerCase().includes(searchTerm.trim().toLowerCase()))
     : uniqueVals;
 
-  const stop = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); };
-
   const allSelected = uniqueVals.length > 0 && selected.size === uniqueVals.length;
 
   return (
-    <>
+    <div className="flex flex-col h-full">
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
         <span className="text-xs font-medium text-gray-600">
@@ -223,12 +221,11 @@ function FilterDropdown({
         <div className="flex gap-1">
           {selected.size > 0 && (
             <button
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onChange(fieldKey, new Set()); }}
+              onClick={() => onChange(fieldKey, new Set())}
               className="text-xs text-indigo-600 hover:text-indigo-800"
             >清除</button>
           )}
-          <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -243,8 +240,6 @@ function FilterDropdown({
           placeholder="搜索筛选值..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          onMouseDown={stop}
-          onClick={stop}
           className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
         />
       </div>
@@ -258,14 +253,11 @@ function FilterDropdown({
             <label
               key={val}
               className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer"
-              onClick={stop}
-              onMouseDown={stop}
             >
               <input
                 type="checkbox"
                 checked={selected.has(val)}
-                onChange={(e) => {
-                  e.stopPropagation();
+                onChange={() => {
                   const next = new Set(selected);
                   next.has(val) ? next.delete(val) : next.add(val);
                   onChange(fieldKey, next);
@@ -280,21 +272,18 @@ function FilterDropdown({
 
       {/* 全选/取消全选 */}
       <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
-        <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 cursor-pointer" onClick={stop} onMouseDown={stop}>
+        <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 cursor-pointer">
           <input
             type="checkbox"
             checked={allSelected}
             ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < uniqueVals.length; }}
-            onChange={(e) => {
-              e.stopPropagation();
-              onChange(fieldKey, allSelected ? new Set() : new Set(uniqueVals));
-            }}
+            onChange={() => onChange(fieldKey, allSelected ? new Set() : new Set(uniqueVals))}
             className="rounded"
           />
           全选/取消全选
         </label>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -409,20 +398,6 @@ export default function StatsPage() {
   const handleFilterChange = (field: string, newSelected: Set<string>) => {
     setFilterValues((prev) => ({ ...prev, [field]: newSelected }));
   };
-
-  // 筛选栏引用
-  const filterRef = useRef<HTMLDivElement>(null);
-
-  // 点击筛选栏外部关闭
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (filterOpen && filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setFilterOpen(null);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [filterOpen]);
 
   /* ── 汇总 ── */
   const totalGood   = sheetRecords.reduce((s, r) => s + r.goodQty, 0);
@@ -977,10 +952,12 @@ export default function StatsPage() {
 
                     return (
                       <th key={key}
-                        className={`relative px-2 py-2 text-left font-semibold whitespace-nowrap border-b border-gray-100 ${isSorted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} ${!isActions ? 'cursor-pointer hover:bg-gray-100 select-none' : ''}`}
-                        onClick={() => !isActions && toggleSort(key as SortField)}
+                        className={`relative px-2 py-2 text-left font-semibold whitespace-nowrap border-b border-gray-100 ${isSorted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} ${!isActions ? 'hover:bg-gray-100 select-none' : ''}`}
                       >
-                        <div className="flex items-center gap-1">
+                        <div
+                          className={`flex items-center gap-1 ${!isActions ? 'cursor-pointer' : ''}`}
+                          onClick={() => !isActions && toggleSort(key as SortField)}
+                        >
                           <span>{label}</span>
                           {!isActions && (
                             <>
@@ -1008,10 +985,7 @@ export default function StatsPage() {
                         {/* 筛选下拉菜单 */}
                         {showDropdown && (
                           <div
-                            ref={filterRef}
                             className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-72 overflow-hidden flex flex-col"
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
                           >
                             <FilterDropdown
                               fieldKey={key}
