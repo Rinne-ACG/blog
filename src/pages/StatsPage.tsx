@@ -335,6 +335,12 @@ export default function StatsPage() {
   const activeLocal = localSheets.find((s) => s.id === activeSheetId);
   const activeSheetName = activeLocal?.name ?? '工作表1';
 
+  // 格式化数字：小数保留两位，整数不变
+  const formatNum = (val: number): string => {
+    if (Number.isInteger(val)) return val.toString();
+    return Number(val).toFixed(2);
+  };
+
   /* ── 搜索过滤 + 列筛选 ── */
   const getCellValue = (r: ProductionRecord, field: SortField): string | number => {
     const fieldMap: Record<string, keyof ProductionRecord> = {
@@ -1127,22 +1133,22 @@ export default function StatsPage() {
                     {renderCommentCell(r, 'actualQty', r.actualQty.toLocaleString(), 'font-medium text-indigo-600')}
                     {renderCommentCell(r, 'windingQty', r.windingQty.toLocaleString())}
                     {renderCommentCell(r, 'goodQty', r.goodQty.toLocaleString(), 'font-medium text-green-600')}
-                    {renderCommentCell(r, 'loss', r.loss >= 0 ? `+${r.loss}` : `${r.loss}` + '%')}
-                    {renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${r.firstBottomConvexShortBurstRate}%`, 'text-red-500')}
-                    {renderCommentCell(r, 'firstPassRate', `${r.firstPassRate}%`, 'text-blue-600')}
-                    {renderCommentCell(r, 'batchYieldRate', r.batchYieldRate > 0 ? `${r.batchYieldRate}%` : '—')}
-                    {renderCommentCell(r, 'defectShort', r.defectShort ? String(r.defectShort) : '—')}
-                    {renderCommentCell(r, 'defectBurst', r.defectBurst ? String(r.defectBurst) : '—')}
-                    {renderCommentCell(r, 'defectBottomConvex', r.defectBottomConvex ? String(r.defectBottomConvex) : '—')}
-                    {renderCommentCell(r, 'defectVoltage', r.defectVoltage ? String(r.defectVoltage) : '—')}
-                    {renderCommentCell(r, 'defectAppearance', r.defectAppearance ? String(r.defectAppearance) : '—')}
-                    {renderCommentCell(r, 'defectLeakage', r.defectLeakage ? String(r.defectLeakage) : '—')}
-                    {renderCommentCell(r, 'defectHighCap', r.defectHighCap ? String(r.defectHighCap) : '—')}
-                    {renderCommentCell(r, 'defectLowCap', r.defectLowCap ? String(r.defectLowCap) : '—')}
-                    {renderCommentCell(r, 'defectDF', r.defectDF ? String(r.defectDF) : '—')}
+                    {renderCommentCell(r, 'loss', r.loss >= 0 ? `+${formatNum(r.loss)}%` : `${formatNum(r.loss)}%`)}
+                    {renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${formatNum(r.firstBottomConvexShortBurstRate)}%`, 'text-red-500')}
+                    {renderCommentCell(r, 'firstPassRate', `${formatNum(r.firstPassRate)}%`, 'text-blue-600')}
+                    {renderCommentCell(r, 'batchYieldRate', r.batchYieldRate > 0 ? `${formatNum(r.batchYieldRate)}%` : '—')}
+                    {renderCommentCell(r, 'defectShort', r.defectShort ? formatNum(r.defectShort) : '—')}
+                    {renderCommentCell(r, 'defectBurst', r.defectBurst ? formatNum(r.defectBurst) : '—')}
+                    {renderCommentCell(r, 'defectBottomConvex', r.defectBottomConvex ? formatNum(r.defectBottomConvex) : '—')}
+                    {renderCommentCell(r, 'defectVoltage', r.defectVoltage ? formatNum(r.defectVoltage) : '—')}
+                    {renderCommentCell(r, 'defectAppearance', r.defectAppearance ? formatNum(r.defectAppearance) : '—')}
+                    {renderCommentCell(r, 'defectLeakage', r.defectLeakage ? formatNum(r.defectLeakage) : '—')}
+                    {renderCommentCell(r, 'defectHighCap', r.defectHighCap ? formatNum(r.defectHighCap) : '—')}
+                    {renderCommentCell(r, 'defectLowCap', r.defectLowCap ? formatNum(r.defectLowCap) : '—')}
+                    {renderCommentCell(r, 'defectDF', r.defectDF ? formatNum(r.defectDF) : '—')}
                     {/* 作业员和备注不支持批注，保持原样 */}
                     <td className="px-2 py-1.5">{r.operator}</td>
-                    <td className="px-2 py-1.5 max-w-[120px] truncate">{r.notes}</td>
+                    <td className="px-2 py-1.5 max-w-[120px] truncate" title={r.notes}>{r.notes}</td>
                     {renderCommentCell(r, 'reworkOrderNo', r.reworkOrderNo)}
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
