@@ -238,7 +238,13 @@ export default function StatsPage() {
       defectLeakage: 'defectLeakage', defectHighCap: 'defectHighCap', defectLowCap: 'defectLowCap',
       defectDF: 'defectDF', operator: 'operator', notes: 'notes', reworkOrderNo: 'reworkOrderNo',
     };
-    return r[fieldMap[field] ?? field] ?? '';
+    const val = r[fieldMap[field] ?? field] ?? '';
+    // 序号列按数字排序
+    if (field === 'seq') {
+      const na = Number(String(val).replace(/\D/g, ''));
+      return isNaN(na) ? val : na;
+    }
+    return val;
   };
 
   const filtered = sheetRecords
@@ -250,11 +256,11 @@ export default function StatsPage() {
         r.workOrderNo.toLowerCase().includes(q) || r.spec.toLowerCase().includes(q) ||
         r.operator.toLowerCase().includes(q)
       );
-      // 列筛选
-      const matchFilters = Object.entries(filterValues).every(([col, selected]) => {
-        if (selected.size === 0) return true;
+      // 列筛选：selected 表示被排除的值，selected.size === 0 表示不排除任何值（显示全部）
+      const matchFilters = Object.entries(filterValues).every(([col, excluded]) => {
+        if (excluded.size === 0) return true;  // 没有排除任何值，显示全部
         const val = String(getCellValue(r, col as SortField));
-        return selected.has(val);
+        return !excluded.has(val);  // 排除被勾选的值
       });
       return matchSearch && matchFilters;
     })
@@ -916,14 +922,12 @@ export default function StatsPage() {
                                 <div className="px-3 py-2 text-xs text-gray-400">无可用选项</div>
                               ) : uniqueVals.length > 50 ? (
                                 <div className="px-3 py-2 text-xs text-gray-500">
-                                  <div className="mb-1 text-gray-400">共 {uniqueVals.length} 个值</div>
+                                  <div className="mb-1 text-gray-400">共 {uniqueVals.length} 个值（勾选排除）</div>
                                   <input
                                     type="text"
                                     placeholder="搜索..."
                                     className="w-full px-2 py-1 text-xs border border-gray-200 rounded mb-1"
-                                    onChange={() => {
-                                      // 搜索功能已集成到筛选逻辑中
-                                    }}
+                                    onChange={() => {}}
                                   />
                                   {uniqueVals.slice(0, 50).map((val) => (
                                     <label key={val} className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer">
@@ -956,18 +960,18 @@ export default function StatsPage() {
                               <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 cursor-pointer">
                                 <input
                                   type="checkbox"
-                                  checked={selectedCount === 0 || selectedCount === uniqueVals.length}
+                                  checked={selectedCount === uniqueVals.length}
                                   ref={(el) => { if (el) el.indeterminate = selectedCount > 0 && selectedCount < uniqueVals.length; }}
                                   onChange={() => {
-                                    if (selectedCount === 0 || selectedCount < uniqueVals.length) {
-                                      setFilterValues((prev) => ({ ...prev, [key]: new Set(uniqueVals) }));
-                                    } else {
+                                    if (selectedCount === uniqueVals.length) {
                                       clearFilter(key);
+                                    } else {
+                                      setFilterValues((prev) => ({ ...prev, [key]: new Set(uniqueVals) }));
                                     }
                                   }}
                                   className="rounded"
                                 />
-                                全选/取消全选
+                                全部排除/取消全部
                               </label>
                             </div>
                           </div>
