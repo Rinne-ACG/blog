@@ -256,11 +256,11 @@ export default function StatsPage() {
         r.workOrderNo.toLowerCase().includes(q) || r.spec.toLowerCase().includes(q) ||
         r.operator.toLowerCase().includes(q)
       );
-      // 列筛选：selected 表示被排除的值，selected.size === 0 表示不排除任何值（显示全部）
-      const matchFilters = Object.entries(filterValues).every(([col, excluded]) => {
-        if (excluded.size === 0) return true;  // 没有排除任何值，显示全部
+      // 列筛选：selected 表示被选中的值，selected.size === 0 表示显示全部
+      const matchFilters = Object.entries(filterValues).every(([col, selected]) => {
+        if (selected.size === 0) return true;  // 没有选中任何值，显示全部
         const val = String(getCellValue(r, col as SortField));
-        return !excluded.has(val);  // 排除被勾选的值
+        return selected.has(val);  // 只显示被勾选的值
       });
       return matchSearch && matchFilters;
     })
@@ -862,9 +862,9 @@ export default function StatsPage() {
                     { key: '__actions__', label: '' },
                   ].map(({ key, label }) => {
                     const isSorted = sortField === key;
-                    const hasFilter = filterValues[key] && filterValues[key].size > 0;
                     const isActions = key === '__actions__';
                     const uniqueVals = isActions ? [] : getColumnUniqueValues(key as SortField);
+                    const hasFilter = filterValues[key] && filterValues[key].size > 0 && filterValues[key].size < uniqueVals.length;
                     const showDropdown = filterOpen === key && !isActions;
                     const selectedCount = filterValues[key]?.size ?? 0;
 
@@ -922,7 +922,7 @@ export default function StatsPage() {
                                 <div className="px-3 py-2 text-xs text-gray-400">无可用选项</div>
                               ) : uniqueVals.length > 50 ? (
                                 <div className="px-3 py-2 text-xs text-gray-500">
-                                  <div className="mb-1 text-gray-400">共 {uniqueVals.length} 个值（勾选排除）</div>
+                                  <div className="mb-1 text-gray-400">共 {uniqueVals.length} 个值（勾选选中）</div>
                                   <input
                                     type="text"
                                     placeholder="搜索..."
@@ -971,7 +971,7 @@ export default function StatsPage() {
                                   }}
                                   className="rounded"
                                 />
-                                全部排除/取消全部
+                                全选/取消全选
                               </label>
                             </div>
                           </div>
