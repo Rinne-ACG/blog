@@ -206,7 +206,7 @@ function FilterDropdown({
     ? uniqueVals.filter(v => v.toLowerCase().includes(searchTerm.trim().toLowerCase()))
     : uniqueVals;
 
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const stop = (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); };
 
   const allSelected = uniqueVals.length > 0 && selected.size === uniqueVals.length;
 
@@ -223,11 +223,12 @@ function FilterDropdown({
         <div className="flex gap-1">
           {selected.size > 0 && (
             <button
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onChange(fieldKey, new Set()); }}
               className="text-xs text-indigo-600 hover:text-indigo-800"
             >清除</button>
           )}
-          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-gray-400 hover:text-gray-600">
+          <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-gray-400 hover:text-gray-600">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -242,6 +243,7 @@ function FilterDropdown({
           placeholder="搜索筛选值..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onMouseDown={stop}
           onClick={stop}
           className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
         />
@@ -257,6 +259,7 @@ function FilterDropdown({
               key={val}
               className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer"
               onClick={stop}
+              onMouseDown={stop}
             >
               <input
                 type="checkbox"
@@ -277,7 +280,7 @@ function FilterDropdown({
 
       {/* 全选/取消全选 */}
       <div className="px-3 py-2 border-t border-gray-100 bg-gray-50">
-        <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 cursor-pointer" onClick={stop}>
+        <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 cursor-pointer" onClick={stop} onMouseDown={stop}>
           <input
             type="checkbox"
             checked={allSelected}
@@ -1008,6 +1011,7 @@ export default function StatsPage() {
                             ref={filterRef}
                             className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-72 overflow-hidden flex flex-col"
                             onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
                           >
                             <FilterDropdown
                               fieldKey={key}
