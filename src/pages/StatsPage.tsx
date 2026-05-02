@@ -970,11 +970,6 @@ export default function StatsPage() {
                           )}
                           {!isActions && (
                             <button
-                              ref={(el) => {
-                                if (el && filterOpen === key) {
-                                  setFilterBtnRect(el.getBoundingClientRect());
-                                }
-                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (filterOpen === key) {
