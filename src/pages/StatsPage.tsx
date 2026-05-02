@@ -915,6 +915,7 @@ export default function StatsPage() {
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-gray-50">
+                  {[
                     { key: 'entryDate', label: '录入日期' },
                     { key: 'seq', label: '序号' },
                     { key: 'materialCode', label: '物料代码' },
