@@ -140,10 +140,15 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
       reworkOrderNo: strFn(g(['重工单号', 'reworkOrderNo'])),
     };
 
+    // 解析批注
+    const commentsStr = strFn(g(['批注', 'comments']));
+    const comments = parseComments(commentsStr);
+
     const derived = calcDerived(base);
     return {
       ...derived,
       batchYieldRate: derived.batchYieldRate || calcRate(derived.goodQty, derived.actualQty),
+      comments,
     };
   });
 }
@@ -178,6 +183,41 @@ const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: numbe
   { key: 'notes', label: '备注', width: 20 },
   { key: 'reworkOrderNo', label: '重工单号', width: 14 },
 ];
+// 批注字段映射（用于导出的列名）
+const COMMENT_FIELD_LABELS: Record<string, string> = {
+  entryDate: '录入日期', seq: '序号', materialCode: '物料代码', spec: '规格',
+  size: '尺寸', workOrderNo: '流转单号', positiveFoilVoltage: '正箔电压',
+  designQty: '设计数量', actualQty: '实际此单总数', windingQty: '卷绕数',
+  goodQty: '良品数', loss: '损耗', firstBottomConvexShortBurstRate: '一次底凸短路爆破率',
+  firstPassRate: '一次直通率', batchYieldRate: '整批良率',
+  defectShort: '短路', defectBurst: '爆破', defectBottomConvex: '底凸',
+  defectVoltage: '耐压', defectAppearance: '外观', defectLeakage: '漏电',
+  defectHighCap: '高容', defectLowCap: '低容', defectDF: 'DF',
+  operator: '作业员', notes: '备注', reworkOrderNo: '重工单号',
+};
+// 反向映射：列名 -> 字段名
+const COMMENT_LABEL_TO_FIELD: Record<string, string> = Object.fromEntries(
+  Object.entries(COMMENT_FIELD_LABELS).map(([k, v]) => [v, k])
+);
+
+// 解析批注字符串 "字段名:内容; 字段名:内容; ..."
+const parseComments = (commentStr: string): Record<string, string> | undefined => {
+  if (!commentStr || !commentStr.trim()) return undefined;
+  const comments: Record<string, string> = {};
+  const parts = commentStr.split(';');
+  for (const part of parts) {
+    const colonIdx = part.indexOf(':');
+    if (colonIdx > 0) {
+      const label = part.slice(0, colonIdx).trim();
+      const content = part.slice(colonIdx + 1).trim();
+      const field = COMMENT_LABEL_TO_FIELD[label];
+      if (field && content) {
+        comments[field] = content;
+      }
+    }
+  }
+  return Object.keys(comments).length > 0 ? comments : undefined;
+};
 
 /* ═══════════════════════════════════════════════════
    主组件
@@ -811,6 +851,7 @@ export default function StatsPage() {
             operator: r.operator,
             notes: r.notes,
             rework_order_no: r.reworkOrderNo,
+            comments: r.comments || null,
           }));
 
           await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
@@ -842,10 +883,22 @@ export default function StatsPage() {
     const exportData = sheetRecords.map((r) => {
       const row: Record<string, unknown> = {};
       EXPORT_COLUMNS.forEach(({ key, label }) => { row[label] = r[key]; });
+      // 导出批注：格式为 "字段名:内容; 字段名:内容; ..."
+      if (r.comments && Object.keys(r.comments).length > 0) {
+        const commentParts: string[] = [];
+        Object.entries(r.comments).forEach(([field, content]) => {
+          const label = COMMENT_FIELD_LABELS[field] || field;
+          commentParts.push(`${label}:${content}`);
+        });
+        row['批注'] = commentParts.join('; ');
+      } else {
+        row['批注'] = '';
+      }
       return row;
     });
+    // 添加批注列
     const ws = XLSX.utils.json_to_sheet(exportData);
-    ws['!cols'] = EXPORT_COLUMNS.map(({ width }) => ({ wch: width }));
+    ws['!cols'] = [...EXPORT_COLUMNS.map(({ width }) => ({ wch: width })), { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, ws, activeSheetName);
     XLSX.writeFile(wb, `生产良率记录_${activeSheetName}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     showToast('导出成功');
