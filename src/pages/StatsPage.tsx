@@ -1285,7 +1285,7 @@ export default function StatsPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">流转单号 <span className="text-red-400">*</span></label>
-                    {textInputWithDatalist('workOrderNo', '2511001')}
+                    {textInput('workOrderNo', '2511001')}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">正箔电压</label>
