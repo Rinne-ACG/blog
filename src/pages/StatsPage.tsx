@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import type { ProductionRecord } from '../types';
 
@@ -204,11 +204,40 @@ const CalcIcon = () => (
 /* ════════════════════════════════════════════
    主组件
 ════════════════════════════════════════════ */
+/* ── localStorage 持久化工具 ── */
+const LS_SHEETS = 'stats_sheets_v1';
+const LS_ORDER  = 'stats_sheetOrder_v1';
+const LS_ACTIVE = 'stats_activeSheet_v1';
+
+function loadLS<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch { return fallback; }
+}
+
 export default function StatsPage() {
-  /* ── State ── */
-  const [sheets, setSheets] = useState<SheetMap>({ [DEFAULT_SHEET]: [] });
-  const [sheetOrder, setSheetOrder] = useState<string[]>([DEFAULT_SHEET]);
-  const [activeSheet, setActiveSheet] = useState(DEFAULT_SHEET);
+  /* ── State（初始值从 localStorage 恢复）── */
+  const [sheets, setSheets] = useState<SheetMap>(() =>
+    loadLS(LS_SHEETS, { [DEFAULT_SHEET]: [] })
+  );
+  const [sheetOrder, setSheetOrder] = useState<string[]>(() =>
+    loadLS(LS_ORDER, [DEFAULT_SHEET])
+  );
+  const [activeSheet, setActiveSheet] = useState<string>(() =>
+    loadLS(LS_ACTIVE, DEFAULT_SHEET)
+  );
+
+  /* ── 每次数据变化时自动同步到 localStorage ── */
+  useEffect(() => {
+    localStorage.setItem(LS_SHEETS, JSON.stringify(sheets));
+  }, [sheets]);
+  useEffect(() => {
+    localStorage.setItem(LS_ORDER, JSON.stringify(sheetOrder));
+  }, [sheetOrder]);
+  useEffect(() => {
+    localStorage.setItem(LS_ACTIVE, JSON.stringify(activeSheet));
+  }, [activeSheet]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -543,6 +572,23 @@ export default function StatsPage() {
                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             导出全部 Excel
+          </button>
+
+          <button
+            onClick={() => {
+              if (!window.confirm('确定要清空所有工作表和数据吗？此操作不可撤销。')) return;
+              const fresh = { [DEFAULT_SHEET]: [] };
+              setSheets(fresh);
+              setSheetOrder([DEFAULT_SHEET]);
+              setActiveSheet(DEFAULT_SHEET);
+              showToast('已清空所有数据');
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-red-200 text-red-500 rounded-lg hover:bg-red-50 text-sm font-medium transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            清空数据
           </button>
 
           {/* 搜索框 */}
