@@ -1,4 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { supabase } from './lib/supabase';
+
 import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
 import PostPage from './pages/PostPage';
@@ -6,7 +9,32 @@ import TagsPage from './pages/TagsPage';
 import AboutPage from './pages/AboutPage';
 import GalleryPage from './pages/GalleryPage';
 import StatsPage from './pages/StatsPage';
+import LoginPage from './pages/LoginPage';
 
+/* ═══════════════════════════════════════════════════
+   路由守卫：未登录 → 踢到 /login
+   ═══════════════════════════════════════════════════ */
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const [ready, setReady]   = useState(false);
+  const [isAuth, setIsAuth] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsAuth(!!data.session);
+      setReady(true);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event: string, session) => setIsAuth(!!session)
+    );
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (!ready) return null;
+  return isAuth ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+/* ═══════════════════════════════════════════════════ */
 export default function App() {
   return (
     <BrowserRouter>
@@ -21,7 +49,15 @@ export default function App() {
             <Route path="/about" element={<AboutPage />} />
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/gallery/:album" element={<GalleryPage />} />
-            <Route path="/stats" element={<StatsPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/stats"
+              element={
+                <AuthGuard>
+                  <StatsPage />
+                </AuthGuard>
+              }
+            />
           </Routes>
         </main>
 
