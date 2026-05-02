@@ -209,7 +209,7 @@ function FilterDropdown({
   const allSelected = uniqueVals.length > 0 && selected.size === uniqueVals.length;
 
   return (
-    <div className="flex flex-col h-0 min-h-0 overflow-hidden">
+    <div className="flex flex-col h-full">
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50 flex-shrink-0">
         <span className="text-xs font-medium text-gray-600">
@@ -985,7 +985,7 @@ export default function StatsPage() {
                         {/* 筛选下拉菜单 */}
                         {showDropdown && (
                           <div
-                            className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-72 overflow-hidden"
+                            className="absolute top-full left-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-72 overflow-hidden flex flex-col"
                           >
                             <FilterDropdown
                               fieldKey={key}
