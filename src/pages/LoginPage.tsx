@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 export default function LoginPage() {
-  const [email, setEmail]         = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword]   = useState('');
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
@@ -13,7 +13,9 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+    // 用户名映射（直接输入 admin → 自动转为真实邮箱）
+    const emailOrUsername = username === 'admin' ? 'admin@123.com' : username;
+    const { error: err } = await supabase.auth.signInWithPassword({ email: emailOrUsername, password });
     setLoading(false);
     if (err) {
       setError(err.message === 'Invalid login credentials' ? '邮箱或密码错误' : err.message);
@@ -41,14 +43,14 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">邮箱</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">用户名 / 邮箱</label>
               <input
-                type="email"
+                type="text"
                 required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="admin"
                 className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 text-sm
                   focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
                   placeholder:text-gray-400 transition"
