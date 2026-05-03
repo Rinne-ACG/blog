@@ -1764,12 +1764,12 @@ export default function StatsPage() {
                     {renderCommentCell(r, 'workOrderNo', r.workOrderNo)}
                     {renderCommentCell(r, 'positiveFoilVoltage', r.positiveFoilVoltage)}
                     {renderCommentCell(r, 'designQty', r.designQty.toLocaleString())}
-                    {renderCommentCell(r, 'actualQty', r.actualQty.toLocaleString(), 'font-medium text-indigo-600')}
+                    {renderCommentCell(r, 'actualQty', r.actualQty.toLocaleString())}
                     {renderCommentCell(r, 'windingQty', r.windingQty.toLocaleString())}
-                    {renderCommentCell(r, 'goodQty', r.goodQty.toLocaleString(), 'font-medium text-green-600')}
-                    {renderCommentCell(r, 'loss', r.loss >= 0 ? `+${formatNum(r.loss)}%` : `${formatNum(r.loss)}%`)}
-                    {renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${formatNum(r.firstBottomConvexShortBurstRate)}%`, 'text-red-500')}
-                    {renderCommentCell(r, 'firstPassRate', `${formatNum(r.firstPassRate)}%`, 'text-blue-600')}
+                    {renderCommentCell(r, 'goodQty', r.goodQty.toLocaleString())}
+                    {(() => { const absLoss = Math.abs(r.loss); const hasComment = r.comments && r.comments['loss']; const colorClass = absLoss > 1 ? (hasComment ? 'text-yellow-600' : 'text-red-600') : (hasComment ? 'text-orange-500' : ''); return renderCommentCell(r, 'loss', r.loss >= 0 ? `+${formatNum(r.loss)}%` : `${formatNum(r.loss)}%`, colorClass); })()}
+                    {(() => { const val = r.firstBottomConvexShortBurstRate; const hasComment = r.comments && r.comments['firstBottomConvexShortBurstRate']; const colorClass = val > 1 ? (hasComment ? 'text-yellow-600' : 'text-red-600') : (hasComment ? 'text-orange-500' : ''); return renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${formatNum(val)}%`, colorClass); })()}
+                    {renderCommentCell(r, 'firstPassRate', `${formatNum(r.firstPassRate)}%`)}
                     {renderCommentCell(r, 'batchYieldRate', r.batchYieldRate > 0 ? `${formatNum(r.batchYieldRate)}%` : '—')}
                     {renderCommentCell(r, 'defectShort', r.defectShort ? formatNum(r.defectShort) : '—')}
                     {renderCommentCell(r, 'defectBurst', r.defectBurst ? formatNum(r.defectBurst) : '—')}
