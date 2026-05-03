@@ -1320,7 +1320,7 @@ export default function StatsPage() {
   // 生成柏拉图SVG（全部单行拼接）
   const generateParetoSVG = (items: typeof noteDefectStats.items) => {
     if (items.length === 0) return '';
-    var w = 800, h = 450, cl = 60, cr = 740, ct = 40, cb = 390;
+    var w = 800, h = 500, cl = 60, cr = 740, ct = 40, cb = 380;
     var cw = cr-cl, ch = cb-ct, mx = Math.max.apply(null, items.map(function(i){return i.count})) || 1;
     var s = '';
     s += '<svg viewBox="0 0 '+w+' '+h+'" width="'+w+'" height="'+h+'" xmlns="http://www.w3.org/2000/svg">';
@@ -1336,18 +1336,18 @@ export default function StatsPage() {
       s += '<line x1="'+x+'" y1="'+ct+'" x2="'+x+'" y2="'+cb+'" stroke="#e5e7eb" stroke-width="0.5" stroke-dasharray="4"/>';
     });
     s += '<line x1="'+cl+'" y1="'+ct+'" x2="'+cl+'" y2="'+cb+'" stroke="#374151" stroke-width="1.5"/>';
-    s += '<text x="20" y="215" text-anchor="middle" font-size="12" fill="#374151" transform="rotate(-90 20 215)">频次</text>';
+    s += '<text x="20" y="210" text-anchor="middle" font-size="12" fill="#374151" transform="rotate(-90 20 210)">频次</text>';
     s += '<line x1="'+cr+'" y1="'+ct+'" x2="'+cr+'" y2="'+cb+'" stroke="#374151" stroke-width="1.5"/>';
     [0,20,40,60,80,100].forEach(function(p){
       var cy = cb-(p/100)*ch;
       s += '<text x="'+(cr+5)+'" y="'+(cy+4)+'" font-size="10" fill="#6b7280">'+p+'%</text>';
     });
-    s += '<text x="'+(w-20)+'" y="215" text-anchor="middle" font-size="12" fill="#374151" transform="rotate(90 '+(w-20)+' 215)">累积百分比</text>';
+    s += '<text x="'+(w-20)+'" y="210" text-anchor="middle" font-size="12" fill="#374151" transform="rotate(90 '+(w-20)+' 210)">累积百分比</text>';
     s += '<line x1="'+cl+'" y1="'+cb+'" x2="'+cr+'" y2="'+cb+'" stroke="#374151" stroke-width="1.5"/>';
     items.forEach(function(item,idx){
       var x = cl+(idx+0.5)*(cw/items.length);
       var dt = item.type.length>4?item.type.slice(0,4)+'...':item.type;
-      s += '<text x="'+x+'" y="'+(cb+20)+'" text-anchor="middle" font-size="10" fill="#374151">'+dt+'</text>';
+      s += '<text x="'+x+'" y="'+(cb+18)+'" text-anchor="middle" font-size="10" fill="#374151">'+dt+'</text>';
     });
     items.forEach(function(item,idx){
       var bw=(cw/items.length)*0.7, bh=(item.count/mx)*(ch*0.85);
@@ -1366,11 +1366,12 @@ export default function StatsPage() {
       s += '<circle cx="'+x+'" cy="'+y+'" r="4" fill="#6366f1" stroke="white" stroke-width="1.5"><title>累积百分比: '+item.cumulativePercentage+'%</title></circle>';
       s += '<text x="'+x+'" y="'+(y-8)+'" text-anchor="middle" font-size="9" fill="#6366f1" font-weight="bold">'+item.cumulativePercentage+'%</text>';
     });
-    s += '<rect x="500" y="400" width="12" height="12" fill="#ef4444" opacity="0.8"/>';
-    s += '<text x="516" y="411" font-size="11" fill="#374151">频次（柱状图）</text>';
-    s += '<line x1="620" y1="406" x2="640" y2="406" stroke="#6366f1" stroke-width="2.5"/>';
-    s += '<circle cx="630" cy="406" r="3" fill="#6366f1"/>';
-    s += '<text x="646" y="411" font-size="11" fill="#374151">累积百分比（折线）</text>';
+    // 图例移至图表下方（y=400），避免与X轴标签重叠
+    s += '<rect x="200" y="430" width="12" height="12" fill="#ef4444" opacity="0.8"/>';
+    s += '<text x="216" y="441" font-size="11" fill="#374151">频次（柱状图）</text>';
+    s += '<line x1="340" y1="436" x2="360" y2="436" stroke="#6366f1" stroke-width="2.5"/>';
+    s += '<circle cx="350" cy="436" r="3" fill="#6366f1"/>';
+    s += '<text x="366" y="441" font-size="11" fill="#374151">累积百分比（折线）</text>';
     s += '</svg>';
     return s;
   };
