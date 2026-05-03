@@ -1715,7 +1715,13 @@ export default function StatsPage() {
                 ))}
                 {/* 筛选结果汇总行 */}
                 <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
-                  <td colSpan={7} className="px-2 py-1.5 text-indigo-700 text-center">汇总 ({filtered.length} 条)</td>
+                  <td className="px-2 py-1.5 text-indigo-700 text-center">汇总 ({filtered.length} 条)</td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
                   <td className="px-2 py-1.5 text-right text-indigo-900">{summary.totalDesign.toLocaleString()}</td>
                   <td className="px-2 py-1.5 text-right text-indigo-600 font-medium">{summary.totalActual.toLocaleString()}</td>
                   <td className="px-2 py-1.5 text-right text-indigo-900">{summary.totalWinding.toLocaleString()}</td>
