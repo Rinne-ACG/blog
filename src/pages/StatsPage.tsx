@@ -1241,9 +1241,6 @@ export default function StatsPage() {
   // 备注不良类型统计
   const calculateNoteDefectStats = () => {
     const typeCountMap: Record<string, number> = {};
-    const DEBUG_TARGET = '正箔有接头';
-    let debugTotal = 0;
-    console.log('=== [调试] 开始计算备注不良类型，共', sheetRecords.length, '条记录 ===');
     sheetRecords.forEach(record => {
       const note = record.notes?.trim();
       if (!note || note === '/' || note === '／') return;
@@ -1251,55 +1248,7 @@ export default function StatsPage() {
       Object.entries(typeMap).forEach(([type, count]) => {
         typeCountMap[type] = (typeCountMap[type] || 0) + count;
       });
-      // 调试：如果本条记录贡献了目标不良类型，打印详情
-      if (typeMap[DEBUG_TARGET] && typeMap[DEBUG_TARGET] > 0) {
-        const contrib = typeMap[DEBUG_TARGET];
-        debugTotal += contrib;
-        console.log(
-          '[调试] 日期:%s | 备注:%s | %s +%d (累计:%d)',
-          record.entryDate, record.notes, DEBUG_TARGET, contrib, debugTotal
-        );
-        console.log('  本记录各不良字段: 短路=%d 爆破=%d 低容=%d 高容=%d 底凸=%d 耐压=%d 外观=%d 漏电=%d DF=%d',
-          record.defectShort, record.defectBurst, record.defectLowCap, record.defectHighCap,
-          record.defectBottomConvex, record.defectVoltage, record.defectAppearance, record.defectLeakage, record.defectDF);
-      }
     });
-    // 调试：打印所有含目标类型的记录（备注中包含但可能被跳过）
-    console.log('=== [调试] 备注中包含「%s」的所有记录 ===', DEBUG_TARGET);
-    let allMentions = 0;
-    sheetRecords.forEach(record => {
-      if (record.notes && record.notes.includes(DEBUG_TARGET)) {
-        const note = record.notes.trim();
-        // 手动重算一次
-        const categoryCounts: Record<string, number> = {
-          '短路': record.defectShort, '爆破': record.defectBurst, '底凸': record.defectBottomConvex,
-          '耐压': record.defectVoltage, '外观': record.defectAppearance, '漏电': record.defectLeakage,
-          '高容': record.defectHighCap, '低容': record.defectLowCap, 'DF': record.defectDF,
-        };
-        let matched = false;
-        for (const part of note.split(/[；;]/)) {
-          const m = part.trim().match(/^(.+?)\s*[：:]】?\s*(.+)$/);
-          if (!m) continue;
-          const cat = m[1].trim();
-          const total = categoryCounts[cat];
-          if (total && total > 0 && m[2].includes(DEBUG_TARGET)) {
-            console.log('[调试-全量] 日期:%s | 类别:%s(数量=%d) | 备注片段:%s', record.entryDate, cat, total, m[2]);
-            allMentions += total;
-            matched = true;
-          } else if (m[2].includes(DEBUG_TARGET)) {
-            console.log('[调试-跳过] 日期:%s | 类别:%s(数量=%d，为0或空!) | 备注片段:%s', record.entryDate, cat, total ?? 0, m[2]);
-            matched = true;
-          }
-        }
-        if (!matched) {
-          console.log('[调试-未解析] 日期:%s | 备注:%s (格式未匹配)', record.entryDate, note);
-        }
-      }
-    });
-    console.log('=== [调试] %s 全量预计总和=%d，实际汇总=%d ===', DEBUG_TARGET, allMentions, typeCountMap[DEBUG_TARGET] || 0);
-    if (allMentions !== (typeCountMap[DEBUG_TARGET] || 0)) {
-      console.log('[调试] ⚠ 差值 =', allMentions - (typeCountMap[DEBUG_TARGET] || 0));
-    }
     const totalCount = Object.values(typeCountMap).reduce((sum, c) => sum + c, 0);
     if (totalCount === 0) return { items: [], totalCount: 0 };
     let items = Object.entries(typeCountMap)
@@ -1851,6 +1800,14 @@ export default function StatsPage() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="bg-indigo-50 border-t-2 border-indigo-200">
+                  <td className="px-3 py-2 font-bold text-indigo-900">合计</td>
+                  <td className="px-3 py-2 text-right font-bold text-indigo-900">{noteDefectStats.totalCount}</td>
+                  <td className="px-3 py-2 text-right font-bold text-indigo-900">100%</td>
+                  <td className="px-3 py-2 text-right text-indigo-600">—</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
