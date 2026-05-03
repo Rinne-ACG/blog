@@ -1201,7 +1201,7 @@ export default function StatsPage() {
           const qty = cnNumMap[cnMatch[1]];
           const rest = item.replace(/^[一二两三四五六七八九十]\s*(?:个|颗|粒)?/, '').trim();
           if (rest) parsedItems.push({ defectType: rest, qty });
-          if (qty > 1) hasExplicitQty = true;
+          hasExplicitQty = true;
           continue;
         }
         // 只有"个/颗"前缀但无数字：默认1
