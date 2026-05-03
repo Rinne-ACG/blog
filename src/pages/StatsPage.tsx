@@ -579,7 +579,7 @@ export default function StatsPage() {
     ) : 0;
     const firstPassRate = totalActual > 0 ? round4(totalGood / totalActual * 100) : 0;
     const batchYieldRate = totalActual > 0 ? round4(totalGood / totalActual * 100) : 0;
-    const sum = (key: string) => filtered.reduce((s, r) => s + (r[key] ?? 0), 0);
+    const sum = (key: keyof ProductionRecord) => filtered.reduce((s, r) => s + ((r[key] as number) ?? 0), 0);
     return {
       totalDesign, totalActual, totalWinding, totalGood,
       lossRate, firstBSBRate, firstPassRate, batchYieldRate,
@@ -1715,7 +1715,7 @@ export default function StatsPage() {
                 ))}
                 {/* 筛选结果汇总行 */}
                 <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
-                  <td colSpan={8} className="px-2 py-1.5 text-indigo-700 text-center">汇总 ({filtered.length} 条)</td>
+                  <td colSpan={7} className="px-2 py-1.5 text-indigo-700 text-center">汇总 ({filtered.length} 条)</td>
                   <td className="px-2 py-1.5 text-right text-indigo-900">{summary.totalDesign.toLocaleString()}</td>
                   <td className="px-2 py-1.5 text-right text-indigo-600 font-medium">{summary.totalActual.toLocaleString()}</td>
                   <td className="px-2 py-1.5 text-right text-indigo-900">{summary.totalWinding.toLocaleString()}</td>
@@ -1733,10 +1733,10 @@ export default function StatsPage() {
                   <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectHighCap > 0 ? formatNum(summary.defectHighCap) : '—'}</td>
                   <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectLowCap > 0 ? formatNum(summary.defectLowCap) : '—'}</td>
                   <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectDF > 0 ? formatNum(summary.defectDF) : '—'}</td>
-                  <td className="px-2 py-1.5 text-center text-indigo-600">—</td>
-                  <td className="px-2 py-1.5 text-center text-indigo-600">—</td>
-                  <td className="px-2 py-1.5 text-center text-indigo-600">—</td>
-                  <td className="px-2 py-1.5 text-center text-indigo-600">—</td>
+                  <td className="px-2 py-1.5 text-center text-indigo-400">—</td>
+                  <td className="px-2 py-1.5 text-center text-indigo-400">—</td>
+                  <td className="px-2 py-1.5 text-center text-indigo-400">—</td>
+                  <td className="px-2 py-1.5 text-center text-indigo-400">—</td>
                 </tr>
               </tbody>
             </table>
