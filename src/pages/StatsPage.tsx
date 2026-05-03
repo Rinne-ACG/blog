@@ -1743,37 +1743,40 @@ export default function StatsPage() {
                     </td>
                   </tr>
                 ))}
-                {/* 筛选结果汇总行 */}
-                <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
-                  <td className="px-2 py-1.5 text-indigo-700 text-center min-w-0 overflow-hidden truncate">汇总 ({filtered.length} 条)</td>
-                  <td className="px-2 py-1.5 min-w-0"></td>
-                  <td className="px-2 py-1.5 min-w-0"></td>
-                  <td className="px-2 py-1.5 min-w-0"></td>
-                  <td className="px-2 py-1.5 min-w-0"></td>
-                  <td className="px-2 py-1.5 min-w-0"></td>
-                  <td className="px-2 py-1.5 min-w-0"></td>
-                  <td className="px-2 py-1.5 text-right text-indigo-900">{summary.totalDesign.toLocaleString()}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600 font-medium">{summary.totalActual.toLocaleString()}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-900">{summary.totalWinding.toLocaleString()}</td>
-                  <td className="px-2 py-1.5 text-right text-green-600 font-medium">{summary.totalGood.toLocaleString()}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-900">{summary.lossRate >= 0 ? `+${formatNum(summary.lossRate)}%` : `${formatNum(summary.lossRate)}%`}</td>
-                  <td className="px-2 py-1.5 text-right text-red-500">{formatNum(summary.firstBSBRate)}%</td>
-                  <td className="px-2 py-1.5 text-right text-blue-600">{formatNum(summary.firstPassRate)}%</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-900">{summary.batchYieldRate > 0 ? `${formatNum(summary.batchYieldRate)}%` : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectShort > 0 ? formatNum(summary.defectShort) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectBurst > 0 ? formatNum(summary.defectBurst) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectBottomConvex > 0 ? formatNum(summary.defectBottomConvex) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectVoltage > 0 ? formatNum(summary.defectVoltage) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectAppearance > 0 ? formatNum(summary.defectAppearance) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectLeakage > 0 ? formatNum(summary.defectLeakage) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectHighCap > 0 ? formatNum(summary.defectHighCap) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectLowCap > 0 ? formatNum(summary.defectLowCap) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectDF > 0 ? formatNum(summary.defectDF) : '—'}</td>
-                  <td className="px-2 py-1.5 text-center text-indigo-400">—</td>
-                  <td className="px-2 py-1.5 text-center text-indigo-400">—</td>
-                  <td className="px-2 py-1.5 text-center text-indigo-400">—</td>
-                  <td className="px-2 py-1.5 text-center text-indigo-400">—</td>
-                </tr>
+                                {/* 筛选结果汇总行 */}
+                <tfoot>
+                  <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
+                    <td className="px-2 py-1.5 text-indigo-700 text-center min-w-0 overflow-hidden truncate" style={{width:'100px'}}>汇总 ({filtered.length} 条)</td>
+                    <td className="px-2 py-1.5" style={{width:'50px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'120px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'120px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
+                    <td className="px-2 py-1.5 text-right text-indigo-900" style={{width:'90px'}}>{summary.totalDesign.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600 font-medium" style={{width:'90px'}}>{summary.totalActual.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-900" style={{width:'80px'}}>{summary.totalWinding.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-right text-green-600 font-medium" style={{width:'80px'}}>{summary.totalGood.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-900" style={{width:'80px'}}>{summary.lossRate >= 0 ? "+" + formatNum(summary.lossRate) + "%" : formatNum(summary.lossRate) + "%"}</td>
+                    <td className="px-2 py-1.5 text-right text-red-500" style={{width:'100px'}}>{formatNum(summary.firstBSBRate)}%</td>
+                    <td className="px-2 py-1.5 text-right text-blue-600" style={{width:'80px'}}>{formatNum(summary.firstPassRate)}%</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-900" style={{width:'80px'}}>{summary.batchYieldRate > 0 ? formatNum(summary.batchYieldRate) + "%" : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectShort > 0 ? formatNum(summary.defectShort) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectBurst > 0 ? formatNum(summary.defectBurst) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectBottomConvex > 0 ? formatNum(summary.defectBottomConvex) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectVoltage > 0 ? formatNum(summary.defectVoltage) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectAppearance > 0 ? formatNum(summary.defectAppearance) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectLeakage > 0 ? formatNum(summary.defectLeakage) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectHighCap > 0 ? formatNum(summary.defectHighCap) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectLowCap > 0 ? formatNum(summary.defectLowCap) : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectDF > 0 ? formatNum(summary.defectDF) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'80px'}}>—</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'150px'}}>—</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'100px'}}>—</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'70px'}}>—</td>
+                  </tr>
+                </tfoot>
+
               </tbody>
             </table>
 
