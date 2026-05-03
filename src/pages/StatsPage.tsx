@@ -514,6 +514,35 @@ export default function StatsPage() {
     return Number(val).toFixed(2);
   };
 
+  const COL_WIDTHS = [
+    100,
+    50,
+    120,
+    80,
+    80,
+    120,
+    80,
+    100,
+    110,
+    90,
+    90,
+    80,
+    100,
+    90,
+    80,
+    60,
+    60,
+    60,
+    60,
+    60,
+    60,
+    60,
+    60,
+    80,
+    130,
+    100,
+    70
+  ];
   /* ── 搜索过滤 + 列筛选 ── */
   const getCellValue = (r: ProductionRecord, field: SortField): string | number => {
     const fieldMap: Record<string, keyof ProductionRecord> = {
@@ -1459,7 +1488,7 @@ export default function StatsPage() {
           return (
             <div
               key={sheet.id}
-              className={`group relative flex items-center gap-1.5 px-4 py-2 cursor-pointer select-none border-t border-l border-r text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
+              className={`group relative flex items-center gap-1.5 px-4 py-2 cursor-pointer select-none border-t border-l border-r text-sm font-medium rounded-t-lg transition-colors whitespace-normal ${
                 isActive
                   ? 'bg-white border-gray-200 text-indigo-600 -mb-px z-10'
                   : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700'
@@ -1571,38 +1600,38 @@ export default function StatsPage() {
           </div>
         ) : (
           <div className="min-h-[400px] max-h-[calc(100vh-280px)] overflow-auto rounded-xl border border-gray-100">
-            <table className="w-full text-xs border-collapse">
+            <table className="w-full text-xs border-collapse" style={{tableLayout: 'fixed'}}>
               <colgroup>
-                <col className="w-24" />
-                <col className="w-10" />
-                <col className="w-28" />
-                <col className="w-20" />
-                <col className="w-16" />
-                <col className="w-24" />
-                <col className="w-16" />
-                <col className="w-20" />
-                <col className="w-20" />
-                <col className="w-16" />
-                <col className="w-16" />
-                <col className="w-16" />
-                <col className="w-20" />
-                <col className="w-16" />
-                <col className="w-16" />
-                <col className="w-12" />
-                <col className="w-12" />
-                <col className="w-12" />
-                <col className="w-12" />
-                <col className="w-12" />
-                <col className="w-12" />
-                <col className="w-12" />
-                <col className="w-12" />
-                <col className="w-12" />
-                <col className="w-16" />
-                <col className="w-32" />
-                <col className="w-20" />
-                <col className="w-16" />
-              </colgroup>
-              <thead className="sticky top-0 z-10 bg-gray-50">
+              <col style={{width: '100px', minWidth: '100px'}} />
+              <col style={{width: '50px', minWidth: '50px'}} />
+              <col style={{width: '120px', minWidth: '120px'}} />
+              <col style={{width: '80px', minWidth: '80px'}} />
+              <col style={{width: '80px', minWidth: '80px'}} />
+              <col style={{width: '120px', minWidth: '120px'}} />
+              <col style={{width: '80px', minWidth: '80px'}} />
+              <col style={{width: '100px', minWidth: '100px'}} />
+              <col style={{width: '110px', minWidth: '110px'}} />
+              <col style={{width: '90px', minWidth: '90px'}} />
+              <col style={{width: '90px', minWidth: '90px'}} />
+              <col style={{width: '80px', minWidth: '80px'}} />
+              <col style={{width: '100px', minWidth: '100px'}} />
+              <col style={{width: '90px', minWidth: '90px'}} />
+              <col style={{width: '80px', minWidth: '80px'}} />
+              <col style={{width: '60px', minWidth: '60px'}} />
+              <col style={{width: '60px', minWidth: '60px'}} />
+              <col style={{width: '60px', minWidth: '60px'}} />
+              <col style={{width: '60px', minWidth: '60px'}} />
+              <col style={{width: '60px', minWidth: '60px'}} />
+              <col style={{width: '60px', minWidth: '60px'}} />
+              <col style={{width: '60px', minWidth: '60px'}} />
+              <col style={{width: '60px', minWidth: '60px'}} />
+              <col style={{width: '80px', minWidth: '80px'}} />
+              <col style={{width: '130px', minWidth: '130px'}} />
+              <col style={{width: '100px', minWidth: '100px'}} />
+              <col style={{width: '70px', minWidth: '70px'}} />
+              <col style={{width: '70px', minWidth: '70px'}} />
+            </colgroup>
+<thead className="sticky top-0 z-10 bg-gray-50">
                 <tr>
                   {[
                     { key: 'entryDate', label: '录入日期' },
@@ -1641,7 +1670,7 @@ export default function StatsPage() {
 
                     return (
                       <th key={key}
-                        className={`relative px-2 py-2 text-left font-semibold whitespace-nowrap border-b border-gray-100 ${isSorted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} ${!isActions ? 'hover:bg-gray-100 select-none' : ''}`}
+                        className={`relative px-2 py-2 text-left font-semibold whitespace-normal border-b border-gray-100 ${isSorted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} ${!isActions ? 'hover:bg-gray-100 select-none' : ''}`}
                       >
                         <div
                           className={`flex items-center gap-1 ${!isActions ? 'cursor-pointer' : ''}`}
@@ -1693,11 +1722,41 @@ export default function StatsPage() {
                     );
                   })}
                 </tr>
-              </thead>
-              <tbody>
+              </thead><tfoot>
+                  <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
+                    <td className="px-2 py-1.5 text-indigo-700 text-center min-w-0 overflow-hidden truncate" style={{width:'100px'}}>汇总 ({filtered.length} 条)</td>
+                    <td className="px-2 py-1.5" style={{width:'50px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'120px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'120px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
+                    <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'90px'}}>{summary.totalDesign.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600 font-medium" style={{width:'90px'}}>{summary.totalActual.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.totalWinding.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center text-green-600 font-medium" style={{width:'80px'}}>{summary.totalGood.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.lossRate >= 0 ? "+" + formatNum(summary.lossRate) + "%" : formatNum(summary.lossRate) + "%"}</td>
+                    <td className="px-2 py-1.5 text-center text-red-500" style={{width:'100px'}}>{formatNum(summary.firstBSBRate)}%</td>
+                    <td className="px-2 py-1.5 text-center text-blue-600" style={{width:'80px'}}>{formatNum(summary.firstPassRate)}%</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.batchYieldRate > 0 ? formatNum(summary.batchYieldRate) + "%" : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectShort > 0 ? formatNum(summary.defectShort) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectBurst > 0 ? formatNum(summary.defectBurst) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectBottomConvex > 0 ? formatNum(summary.defectBottomConvex) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectVoltage > 0 ? formatNum(summary.defectVoltage) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectAppearance > 0 ? formatNum(summary.defectAppearance) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectLeakage > 0 ? formatNum(summary.defectLeakage) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectHighCap > 0 ? formatNum(summary.defectHighCap) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectLowCap > 0 ? formatNum(summary.defectLowCap) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectDF > 0 ? formatNum(summary.defectDF) : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'80px'}}>—</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'150px'}}>—</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'100px'}}>—</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'70px'}}>—</td>
+                  </tr>
+                </tfoot><tbody>
                 {filtered.map((r, i) => (
                   <tr key={r.id} className={`group hover:bg-indigo-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                    {renderCommentCell(r, 'entryDate', r.entryDate, 'whitespace-nowrap')}
+                    {renderCommentCell(r, 'entryDate', r.entryDate, 'whitespace-normal')}
                     {renderCommentCell(r, 'seq', r.seq)}
                     {renderCommentCell(r, 'materialCode', r.materialCode, 'font-medium text-gray-800')}
                     {renderCommentCell(r, 'spec', r.spec)}
@@ -1744,38 +1803,7 @@ export default function StatsPage() {
                   </tr>
                 ))}
                                 {/* 筛选结果汇总行 */}
-                <tfoot>
-                  <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
-                    <td className="px-2 py-1.5 text-indigo-700 text-center min-w-0 overflow-hidden truncate" style={{width:'100px'}}>汇总 ({filtered.length} 条)</td>
-                    <td className="px-2 py-1.5" style={{width:'50px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'120px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'120px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5 text-right text-indigo-900" style={{width:'90px'}}>{summary.totalDesign.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600 font-medium" style={{width:'90px'}}>{summary.totalActual.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-900" style={{width:'80px'}}>{summary.totalWinding.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-right text-green-600 font-medium" style={{width:'80px'}}>{summary.totalGood.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-900" style={{width:'80px'}}>{summary.lossRate >= 0 ? "+" + formatNum(summary.lossRate) + "%" : formatNum(summary.lossRate) + "%"}</td>
-                    <td className="px-2 py-1.5 text-right text-red-500" style={{width:'100px'}}>{formatNum(summary.firstBSBRate)}%</td>
-                    <td className="px-2 py-1.5 text-right text-blue-600" style={{width:'80px'}}>{formatNum(summary.firstPassRate)}%</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-900" style={{width:'80px'}}>{summary.batchYieldRate > 0 ? formatNum(summary.batchYieldRate) + "%" : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectShort > 0 ? formatNum(summary.defectShort) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectBurst > 0 ? formatNum(summary.defectBurst) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectBottomConvex > 0 ? formatNum(summary.defectBottomConvex) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectVoltage > 0 ? formatNum(summary.defectVoltage) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectAppearance > 0 ? formatNum(summary.defectAppearance) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectLeakage > 0 ? formatNum(summary.defectLeakage) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectHighCap > 0 ? formatNum(summary.defectHighCap) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectLowCap > 0 ? formatNum(summary.defectLowCap) : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-indigo-600" style={{width:'60px'}}>{summary.defectDF > 0 ? formatNum(summary.defectDF) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'80px'}}>—</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'150px'}}>—</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'100px'}}>—</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'70px'}}>—</td>
-                  </tr>
-                </tfoot>
+                
 
               </tbody>
             </table>
