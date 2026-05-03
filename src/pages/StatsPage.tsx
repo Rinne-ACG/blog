@@ -567,6 +567,34 @@ export default function StatsPage() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
 
+  // 筛选结果汇总计算
+  const summary = (() => {
+    const totalDesign   = filtered.reduce((s, r) => s + r.designQty, 0);
+    const totalActual   = filtered.reduce((s, r) => s + r.actualQty, 0);
+    const totalWinding  = filtered.reduce((s, r) => s + r.windingQty, 0);
+    const totalGood     = filtered.reduce((s, r) => s + r.goodQty, 0);
+    const lossRate      = totalDesign > 0 ? round4((totalActual - totalDesign) / totalDesign * 100) : 0;
+    const firstBSBRate  = totalWinding > 0 ? round4(
+      filtered.reduce((s, r) => s + r.defectShort + r.defectBurst + r.defectBottomConvex, 0) / totalWinding * 100
+    ) : 0;
+    const firstPassRate = totalActual > 0 ? round4(totalGood / totalActual * 100) : 0;
+    const batchYieldRate = totalActual > 0 ? round4(totalGood / totalActual * 100) : 0;
+    const sum = (key: string) => filtered.reduce((s, r) => s + (r[key] ?? 0), 0);
+    return {
+      totalDesign, totalActual, totalWinding, totalGood,
+      lossRate, firstBSBRate, firstPassRate, batchYieldRate,
+      defectShort:      sum('defectShort'),
+      defectBurst:      sum('defectBurst'),
+      defectBottomConvex: sum('defectBottomConvex'),
+      defectVoltage:     sum('defectVoltage'),
+      defectAppearance:  sum('defectAppearance'),
+      defectLeakage:     sum('defectLeakage'),
+      defectHighCap:     sum('defectHighCap'),
+      defectLowCap:      sum('defectLowCap'),
+      defectDF:          sum('defectDF'),
+    };
+  })();
+
   // 获取所有列的唯一值（用于筛选下拉）
   const getColumnUniqueValues = (field: SortField): string[] => {
     return [...new Set(sheetRecords.map((r) => String(getCellValue(r, field))))].sort((a, b) => {
@@ -1685,6 +1713,31 @@ export default function StatsPage() {
                     </td>
                   </tr>
                 ))}
+                {/* 筛选结果汇总行 */}
+                <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
+                  <td colSpan={8} className="px-2 py-1.5 text-indigo-700 text-center">汇总 ({filtered.length} 条)</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-900">{summary.totalDesign.toLocaleString()}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600 font-medium">{summary.totalActual.toLocaleString()}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-900">{summary.totalWinding.toLocaleString()}</td>
+                  <td className="px-2 py-1.5 text-right text-green-600 font-medium">{summary.totalGood.toLocaleString()}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-900">{summary.lossRate >= 0 ? `+${formatNum(summary.lossRate)}%` : `${formatNum(summary.lossRate)}%`}</td>
+                  <td className="px-2 py-1.5 text-right text-red-500">{formatNum(summary.firstBSBRate)}%</td>
+                  <td className="px-2 py-1.5 text-right text-blue-600">{formatNum(summary.firstPassRate)}%</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-900">{summary.batchYieldRate > 0 ? `${formatNum(summary.batchYieldRate)}%` : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectShort > 0 ? formatNum(summary.defectShort) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectBurst > 0 ? formatNum(summary.defectBurst) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectBottomConvex > 0 ? formatNum(summary.defectBottomConvex) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectVoltage > 0 ? formatNum(summary.defectVoltage) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectAppearance > 0 ? formatNum(summary.defectAppearance) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectLeakage > 0 ? formatNum(summary.defectLeakage) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectHighCap > 0 ? formatNum(summary.defectHighCap) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectLowCap > 0 ? formatNum(summary.defectLowCap) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-indigo-600">{summary.defectDF > 0 ? formatNum(summary.defectDF) : '—'}</td>
+                  <td className="px-2 py-1.5 text-center text-indigo-600">—</td>
+                  <td className="px-2 py-1.5 text-center text-indigo-600">—</td>
+                  <td className="px-2 py-1.5 text-center text-indigo-600">—</td>
+                  <td className="px-2 py-1.5 text-center text-indigo-600">—</td>
+                </tr>
               </tbody>
             </table>
 
