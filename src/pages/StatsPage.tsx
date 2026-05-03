@@ -1131,6 +1131,301 @@ export default function StatsPage() {
     );
   };
 
+  const parseNoteForDefectTypes = (note: string, record: ProductionRecord): Record<string, number> => {
+    const typeMap: Record<string, number> = {};
+    if (!note || note.trim() === '' || note.trim() === '/' || note.trim() === '／') return typeMap;
+
+    // 各通用类别的不良数量
+    const categoryCounts: Record<string, number> = {
+      '短路': record.defectShort,
+      '爆破': record.defectBurst,
+      '底凸': record.defectBottomConvex,
+      '耐压': record.defectVoltage,
+      '外观': record.defectAppearance,
+      '漏电': record.defectLeakage,
+      '高容': record.defectHighCap,
+      '低容': record.defectLowCap,
+      'DF': record.defectDF,
+    };
+
+    // 按分号分割，支持多条备注（如 "底凸：均为箔边爆破；短路：2个箔边爆破，1个箔面爆破"）
+    const parts = note.split(/[；;]/);
+    for (const part of parts) {
+      const trimmedPart = part.trim();
+      if (!trimmedPart) continue;
+      const colonMatch = trimmedPart.match(/^(.+?)\s*[：:]】?\s*(.+)$/);
+      if (!colonMatch) continue;
+      const category = colonMatch[1].trim();
+      const description = colonMatch[2].trim();
+      const totalCount = categoryCounts[category];
+      if (!totalCount || totalCount <= 0) continue;
+
+      // 情况1："均为XXX" 或 "全部XXX" → XXX 获得该类别全部数量
+      if (/^均为/.test(description) || /^全部/.test(description)) {
+        const defectType = description.replace(/^均为|^全部/, '').trim();
+        if (defectType) {
+          typeMap[defectType] = (typeMap[defectType] || 0) + totalCount;
+        }
+        continue;
+      }
+
+      // 情况2：按逗号分割，逐项解析数量和不良类型
+      // 支持格式："2个箔边爆破，1个箔面爆破"、"两颗箔边爆破，一颗箔面爆破"、"箔边爆破×2，箔面爆破×1"
+      const items = description.split(/[，,、]/).map(s => s.trim()).filter(s => s.length > 0);
+      if (items.length === 0) continue;
+
+      const parsedItems: { defectType: string; qty: number }[] = [];
+      let hasExplicitQty = false;
+
+      for (const item of items) {
+        // 格式A："XXX×2" 或 "XXX*2"
+        const qtySuffixMatch = item.match(/^(.+?)\s*[×xX*](\d+)$/);
+        if (qtySuffixMatch) {
+          parsedItems.push({ defectType: qtySuffixMatch[1].trim(), qty: parseInt(qtySuffixMatch[2], 10) });
+          hasExplicitQty = true;
+          continue;
+        }
+        // 格式B："2个XXX"、"两颗XXX"、"一个XXX"
+        const qtyMatch = item.match(/^(\d+)\s*(?:个|颗|粒)/);
+        if (qtyMatch) {
+          const qty = parseInt(qtyMatch[1], 10);
+          const rest = item.replace(/^\d+\s*(?:个|颗|粒)/, '').trim();
+          if (rest) parsedItems.push({ defectType: rest, qty });
+          hasExplicitQty = true;
+          continue;
+        }
+        // 中文数字："两个XXX"、"三颗XXX"
+        const cnNumMap: Record<string, number> = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+        const cnMatch = item.match(/^([一二两三四五六七八九十])\s*(?:个|颗|粒)?/);
+        if (cnMatch && cnNumMap[cnMatch[1]]) {
+          const qty = cnNumMap[cnMatch[1]];
+          const rest = item.replace(/^[一二两三四五六七八九十]\s*(?:个|颗|粒)?/, '').trim();
+          if (rest) parsedItems.push({ defectType: rest, qty });
+          if (qty > 1) hasExplicitQty = true;
+          continue;
+        }
+        // 只有"个/颗"前缀但无数字：默认1
+        if (/^(?:个|颗|粒)/.test(item)) {
+          const rest = item.replace(/^(?:个|颗|粒)/, '').trim();
+          if (rest) parsedItems.push({ defectType: rest, qty: 1 });
+          continue;
+        }
+        // 格式C：只有不良类型名称（无数量）
+        parsedItems.push({ defectType: item, qty: 0 });
+      }
+
+      if (hasExplicitQty) {
+        for (const { defectType, qty } of parsedItems) {
+          const actualQty = qty > 0 ? qty : 1;
+          typeMap[defectType] = (typeMap[defectType] || 0) + actualQty;
+        }
+      } else {
+        // 无明确数量，按 totalCount 平均分配
+        const noQtyItems = parsedItems.filter(p => p.qty === 0);
+        if (noQtyItems.length > 0) {
+          const base = Math.floor(totalCount / noQtyItems.length);
+          const extra = totalCount % noQtyItems.length;
+          for (let i = 0; i < noQtyItems.length; i++) {
+            const { defectType } = noQtyItems[i];
+            const qty = i === 0 ? base + extra : base;
+            if (qty > 0) {
+              typeMap[defectType] = (typeMap[defectType] || 0) + qty;
+            }
+          }
+        }
+      }
+    }
+    return typeMap;
+  };
+
+  // 备注不良类型统计
+  const calculateNoteDefectStats = () => {
+    const typeCountMap: Record<string, number> = {};
+    const DEBUG_TARGET = '正箔有接头';
+    let debugTotal = 0;
+    console.log('=== [调试] 开始计算备注不良类型，共', sheetRecords.length, '条记录 ===');
+    sheetRecords.forEach(record => {
+      const note = record.notes?.trim();
+      if (!note || note === '/' || note === '／') return;
+      const typeMap = parseNoteForDefectTypes(note, record);
+      Object.entries(typeMap).forEach(([type, count]) => {
+        typeCountMap[type] = (typeCountMap[type] || 0) + count;
+      });
+      // 调试：如果本条记录贡献了目标不良类型，打印详情
+      if (typeMap[DEBUG_TARGET] && typeMap[DEBUG_TARGET] > 0) {
+        const contrib = typeMap[DEBUG_TARGET];
+        debugTotal += contrib;
+        console.log(
+          '[调试] 日期:%s | 备注:%s | %s +%d (累计:%d)',
+          record.entryDate, record.notes, DEBUG_TARGET, contrib, debugTotal
+        );
+        console.log('  本记录各不良字段: 短路=%d 爆破=%d 低容=%d 高容=%d 底凸=%d 耐压=%d 外观=%d 漏电=%d DF=%d',
+          record.defectShort, record.defectBurst, record.defectLowCap, record.defectHighCap,
+          record.defectBottomConvex, record.defectVoltage, record.defectAppearance, record.defectLeakage, record.defectDF);
+      }
+    });
+    // 调试：打印所有含目标类型的记录（备注中包含但可能被跳过）
+    console.log('=== [调试] 备注中包含「%s」的所有记录 ===', DEBUG_TARGET);
+    let allMentions = 0;
+    sheetRecords.forEach(record => {
+      if (record.notes && record.notes.includes(DEBUG_TARGET)) {
+        const note = record.notes.trim();
+        // 手动重算一次
+        const categoryCounts: Record<string, number> = {
+          '短路': record.defectShort, '爆破': record.defectBurst, '底凸': record.defectBottomConvex,
+          '耐压': record.defectVoltage, '外观': record.defectAppearance, '漏电': record.defectLeakage,
+          '高容': record.defectHighCap, '低容': record.defectLowCap, 'DF': record.defectDF,
+        };
+        let matched = false;
+        for (const part of note.split(/[；;]/)) {
+          const m = part.trim().match(/^(.+?)\s*[：:]】?\s*(.+)$/);
+          if (!m) continue;
+          const cat = m[1].trim();
+          const total = categoryCounts[cat];
+          if (total && total > 0 && m[2].includes(DEBUG_TARGET)) {
+            console.log('[调试-全量] 日期:%s | 类别:%s(数量=%d) | 备注片段:%s', record.entryDate, cat, total, m[2]);
+            allMentions += total;
+            matched = true;
+          } else if (m[2].includes(DEBUG_TARGET)) {
+            console.log('[调试-跳过] 日期:%s | 类别:%s(数量=%d，为0或空!) | 备注片段:%s', record.entryDate, cat, total ?? 0, m[2]);
+            matched = true;
+          }
+        }
+        if (!matched) {
+          console.log('[调试-未解析] 日期:%s | 备注:%s (格式未匹配)', record.entryDate, note);
+        }
+      }
+    });
+    console.log('=== [调试] %s 全量预计总和=%d，实际汇总=%d ===', DEBUG_TARGET, allMentions, typeCountMap[DEBUG_TARGET] || 0);
+    if (allMentions !== (typeCountMap[DEBUG_TARGET] || 0)) {
+      console.log('[调试] ⚠ 差值 =', allMentions - (typeCountMap[DEBUG_TARGET] || 0));
+    }
+    const totalCount = Object.values(typeCountMap).reduce((sum, c) => sum + c, 0);
+    if (totalCount === 0) return { items: [], totalCount: 0 };
+    let items = Object.entries(typeCountMap)
+      .map(([type, count]) => ({
+        type,
+        count,
+        percentage: round2((count / totalCount) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+    const mainItems = items.filter(item => item.percentage > 0.5);
+    const otherItems = items.filter(item => item.percentage <= 0.5);
+    if (otherItems.length > 0) {
+      const otherCount = otherItems.reduce((sum, item) => sum + item.count, 0);
+      mainItems.push({
+        type: '其他',
+        count: otherCount,
+        percentage: round2((otherCount / totalCount) * 100),
+      });
+    }
+    mainItems.sort((a, b) => b.count - a.count);
+    let cumulative = 0;
+    const itemsWithCumulative = mainItems.map(item => {
+      cumulative += item.percentage;
+      return { ...item, cumulativePercentage: round2(cumulative) };
+    });
+    return { items: itemsWithCumulative, totalCount };
+  };
+
+  const noteDefectStats = calculateNoteDefectStats();
+
+  // ═══ 汇总统计计算 ═══
+  const totalDesign   = sheetRecords.reduce((s, r) => s + r.designQty, 0);
+  const totalWinding  = sheetRecords.reduce((s, r) => s + r.windingQty, 0);
+  const avgLossRate   = totalDesign > 0 ? round2((totalActual - totalDesign) / totalDesign * 100) : 0;
+
+  // 解析规格电压数值（用于区分低/中/高压损耗）
+  const parseSpecVoltage = (v: string): number | null => {
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  };
+  const lowVoltageRecords  = sheetRecords.filter(r => { const v = parseSpecVoltage(r.spec); return v !== null && v <= 120; });
+  const midVoltageRecords  = sheetRecords.filter(r => { const v = parseSpecVoltage(r.spec); return v !== null && v >= 160 && v < 400; });
+  const highVoltageRecords = sheetRecords.filter(r => { const v = parseSpecVoltage(r.spec); return v !== null && v >= 400; });
+
+  const calcAvgLossRate = (records: ProductionRecord[]): number => {
+    if (records.length === 0) return 0;
+    const totalD = records.reduce((s, r) => s + r.designQty, 0);
+    const totalA = records.reduce((s, r) => s + r.actualQty, 0);
+    return totalD > 0 ? round2((totalA - totalD) / totalD * 100) : 0;
+  };
+  const lowVoltageLossRate  = calcAvgLossRate(lowVoltageRecords);
+  const midVoltageLossRate  = calcAvgLossRate(midVoltageRecords);
+  const highVoltageLossRate = calcAvgLossRate(highVoltageRecords);
+
+  const totalBottomConvexShortBurstRate = totalWinding > 0 ? round2(
+    sheetRecords.reduce((s, r) => s + r.defectShort + r.defectBurst + r.defectBottomConvex, 0) / totalWinding * 100
+  ) : 0;
+
+  const totalPassRate = totalActual > 0 ? round2(totalGood / totalActual * 100) : 0;
+
+  const voltageDistribution = [
+    { label: '≤120V（低压）',   count: lowVoltageRecords.length },
+    { label: '160V-400V（中压）', count: midVoltageRecords.length },
+    { label: '≥400V（高压）',   count: highVoltageRecords.length },
+    { label: '未知',           count: sheetRecords.filter(r => parseSpecVoltage(r.spec) === null).length },
+  ];
+  // ═══ 汇总统计计算结束 ═══
+
+  // 生成柏拉图SVG（全部单行拼接）
+  const generateParetoSVG = (items: typeof noteDefectStats.items) => {
+    if (items.length === 0) return '';
+    var w = 800, h = 450, cl = 60, cr = 740, ct = 40, cb = 390;
+    var cw = cr-cl, ch = cb-ct, mx = Math.max.apply(null, items.map(function(i){return i.count})) || 1;
+    var s = '';
+    s += '<svg viewBox="0 0 '+w+' '+h+'" width="'+w+'" height="'+h+'" xmlns="http://www.w3.org/2000/svg">';
+    s += '<rect width="'+w+'" height="'+h+'" fill="white"/>';
+    s += '<text x="'+(w/2)+'" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#1f2937">备注不良类型柏拉图</text>';
+    [0,50,100,150,200,250,300,350].forEach(function(y){
+      var cy = cb-y;
+      s += '<line x1="'+cl+'" y1="'+cy+'" x2="'+cr+'" y2="'+cy+'" stroke="#e5e7eb" stroke-width="0.5"/>';
+      s += '<text x="'+(cl-5)+'" y="'+(cy+4)+'" text-anchor="end" font-size="10" fill="#6b7280">'+(y===0?'0':y)+'</text>';
+    });
+    items.forEach(function(_item,idx){
+      var x = cl+(idx+0.5)*(cw/items.length);
+      s += '<line x1="'+x+'" y1="'+ct+'" x2="'+x+'" y2="'+cb+'" stroke="#e5e7eb" stroke-width="0.5" stroke-dasharray="4"/>';
+    });
+    s += '<line x1="'+cl+'" y1="'+ct+'" x2="'+cl+'" y2="'+cb+'" stroke="#374151" stroke-width="1.5"/>';
+    s += '<text x="20" y="215" text-anchor="middle" font-size="12" fill="#374151" transform="rotate(-90 20 215)">频次</text>';
+    s += '<line x1="'+cr+'" y1="'+ct+'" x2="'+cr+'" y2="'+cb+'" stroke="#374151" stroke-width="1.5"/>';
+    [0,20,40,60,80,100].forEach(function(p){
+      var cy = cb-(p/100)*ch;
+      s += '<text x="'+(cr+5)+'" y="'+(cy+4)+'" font-size="10" fill="#6b7280">'+p+'%</text>';
+    });
+    s += '<text x="'+(w-20)+'" y="215" text-anchor="middle" font-size="12" fill="#374151" transform="rotate(90 '+(w-20)+' 215)">累积百分比</text>';
+    s += '<line x1="'+cl+'" y1="'+cb+'" x2="'+cr+'" y2="'+cb+'" stroke="#374151" stroke-width="1.5"/>';
+    items.forEach(function(item,idx){
+      var x = cl+(idx+0.5)*(cw/items.length);
+      var dt = item.type.length>4?item.type.slice(0,4)+'...':item.type;
+      s += '<text x="'+x+'" y="'+(cb+20)+'" text-anchor="middle" font-size="10" fill="#374151">'+dt+'</text>';
+    });
+    items.forEach(function(item,idx){
+      var bw=(cw/items.length)*0.7, bh=(item.count/mx)*(ch*0.85);
+      var x=cl+(idx+0.5)*(cw/items.length)-bw/2, y=cb-bh;
+      var col=item.percentage>10?'#ef4444':(item.percentage>5?'#f59e0b':'#10b981');
+      s += '<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+col+'" opacity="0.8"><title>'+item.type+': 频次 '+item.count+'，百分比 '+item.percentage+'%</title></rect>';
+    });
+    var pts:string[]=[];
+    items.forEach(function(item,idx){
+      var x=cl+(idx+0.5)*(cw/items.length), y=cb-(item.cumulativePercentage/100)*ch;
+      pts.push(x+','+y);
+    });
+    s += '<polyline points="'+pts.join(' ')+'" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+    items.forEach(function(item,idx){
+      var x=cl+(idx+0.5)*(cw/items.length), y=cb-(item.cumulativePercentage/100)*ch;
+      s += '<circle cx="'+x+'" cy="'+y+'" r="4" fill="#6366f1" stroke="white" stroke-width="1.5"><title>累积百分比: '+item.cumulativePercentage+'%</title></circle>';
+      s += '<text x="'+x+'" y="'+(y-8)+'" text-anchor="middle" font-size="9" fill="#6366f1" font-weight="bold">'+item.cumulativePercentage+'%</text>';
+    });
+    s += '<rect x="500" y="400" width="12" height="12" fill="#ef4444" opacity="0.8"/>';
+    s += '<text x="516" y="411" font-size="11" fill="#374151">频次（柱状图）</text>';
+    s += '<line x1="620" y1="406" x2="640" y2="406" stroke="#6366f1" stroke-width="2.5"/>';
+    s += '<circle cx="630" cy="406" r="3" fill="#6366f1"/>';
+    s += '<text x="646" y="411" font-size="11" fill="#374151">累积百分比（折线）</text>';
+    s += '</svg>';
+    return s;
+  };
+
   /* ════ RENDER ════ */
   if (loading) {
     return (
@@ -1445,6 +1740,122 @@ export default function StatsPage() {
 
           </div>
         )}
+
+      {/* ── 汇总统计 ── */}
+      <div className="mt-6 bg-white border border-gray-200 rounded-xl p-5">
+        <h4 className="text-base font-bold text-gray-900 mb-4">📊 汇总统计</h4>
+
+        {/* 彩色卡片概览 */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-indigo-50 rounded-lg p-3">
+            <div className="text-xs text-indigo-600 mb-1">总单数</div>
+            <div className="text-xl font-bold text-indigo-700">{sheetRecords.length}</div>
+          </div>
+          <div className="bg-green-50 rounded-lg p-3">
+            <div className="text-xs text-green-600 mb-1">良品数量</div>
+            <div className="text-xl font-bold text-green-700">{totalGood.toLocaleString()}</div>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-3">
+            <div className="text-xs text-blue-600 mb-1">完工产量</div>
+            <div className="text-xl font-bold text-blue-700">{totalActual.toLocaleString()}</div>
+          </div>
+          <div className="bg-amber-50 rounded-lg p-3">
+            <div className="text-xs text-amber-600 mb-1">总直通率</div>
+            <div className="text-xl font-bold text-amber-700">{totalPassRate}%</div>
+          </div>
+        </div>
+
+        {/* 详细统计表格 */}
+        <div className="mb-6">
+          <h5 className="text-sm font-semibold text-gray-700 mb-2">详细统计</h5>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">统计项</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">数值</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">计算说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="bg-white">
+                  <td className="px-3 py-2 text-gray-800">平均损耗率</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900">{avgLossRate}%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">(完工产量 - 总设计数量) / 总设计数量 × 100%</td>
+                </tr>
+                <tr className="bg-gray-50">
+                  <td className="px-3 py-2 text-gray-800">低压损耗 (≤120V)</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900">{lowVoltageLossRate}%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">规格电压 ≤ 120V 记录的平均损耗率</td>
+                </tr>
+                <tr className="bg-white">
+                  <td className="px-3 py-2 text-gray-800">中压损耗 (160V-400V)</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900">{midVoltageLossRate}%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">160V ≤ 规格电压 &lt; 400V 记录的平均损耗率</td>
+                </tr>
+                <tr className="bg-gray-50">
+                  <td className="px-3 py-2 text-gray-800">高压损耗 (≥400V)</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900">{highVoltageLossRate}%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">规格电压 ≥ 400V 记录的平均损耗率</td>
+                </tr>
+                <tr className="bg-white">
+                  <td className="px-3 py-2 text-gray-800">底凸短路爆破率</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900">{totalBottomConvexShortBurstRate}%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">(短路+爆破+底凸) / 卷绕数 × 100%</td>
+                </tr>
+                <tr className="bg-gray-50">
+                  <td className="px-3 py-2 text-gray-800">总直通率</td>
+                  <td className="px-3 py-2 text-right font-medium text-indigo-600 font-semibold">{totalPassRate}%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">良品数量 / 完工产量 × 100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* 电压分布概览 */}
+        <div>
+          <h5 className="text-sm font-semibold text-gray-700 mb-2">电压分布概览</h5>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {voltageDistribution.map((item, idx) => (
+              <div key={idx} className="bg-gray-50 rounded-lg p-3 flex justify-between items-center">
+                <span className="text-xs text-gray-600">{item.label}</span>
+                <span className="text-sm font-bold text-gray-800">{item.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 备注不良类型统计 ── */}
+      {noteDefectStats.totalCount > 0 && noteDefectStats.items.length > 0 && (
+        <div className="mt-6 bg-white border border-gray-200 rounded-xl p-5">
+          <h4 className="text-base font-bold text-gray-900 mb-4">📋 备注不良类型统计</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">不良类型</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">频次</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">百分比(%)</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">累积百分比(%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {noteDefectStats.items.map((item, idx) => (
+                  <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-3 py-2 text-gray-800">{item.type}</td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-900">{item.count}</td>
+                    <td className="px-3 py-2 text-right text-gray-600">{item.percentage}%</td>
+                    <td className="px-3 py-2 text-right text-indigo-600 font-semibold">{item.cumulativePercentage}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       </div>
 
       {/* ── 批注编辑弹窗 ── */}
@@ -1641,6 +2052,45 @@ export default function StatsPage() {
           <div className="bg-gray-800 text-white text-sm px-5 py-2.5 rounded-full shadow-lg">
             {toastMsg}
           </div>
+        </div>
+      )}
+
+      {/* 柏拉图 */}
+      {noteDefectStats.totalCount > 0 && noteDefectStats.items.length > 0 && (
+        <div className="mt-6 bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-base font-bold text-gray-900">📈 备注不良类型柏拉图</h4>
+            <button
+              onClick={() => {
+                const svgEl = document.getElementById('pareto-chart');
+                if (svgEl) {
+                  const svgData = new XMLSerializer().serializeToString(svgEl);
+                  const canvas = document.createElement('canvas');
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+                  const img = new Image();
+                  img.onload = function() {
+                    canvas.width = img.width; canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    canvas.toBlob(function(blob) {
+                      if (blob) {
+                        navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).then(function() {
+                          showToast('图表已复制到剪贴板');
+                        }).catch(function() {
+                          showToast('复制失败，请右键另存为图片');
+                        });
+                      }
+                    });
+                  };
+                  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors"
+            >
+              复制到剪贴板
+            </button>
+          </div>
+          <div id="pareto-chart" className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: generateParetoSVG(noteDefectStats.items) }} />
         </div>
       )}
 
