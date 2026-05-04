@@ -9,6 +9,7 @@ import TagsPage from './pages/TagsPage';
 import AboutPage from './pages/AboutPage';
 import GalleryPage from './pages/GalleryPage';
 import StatsPage from './pages/StatsPage';
+import BoltStatsPage from './pages/BoltStatsPage';
 import LoginPage from './pages/LoginPage';
 
 /* ═══════════════════════════════════════════════════
@@ -53,6 +54,14 @@ export default function App() {
               element={
                 <AuthGuard>
                   <StatsPage />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/bolt-stats"
+              element={
+                <AuthGuard>
+                  <BoltStatsPage />
                 </AuthGuard>
               }
             />

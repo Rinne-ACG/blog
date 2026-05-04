@@ -5,6 +5,9 @@ import JSZip from 'jszip';
 import { supabase } from '../lib/supabase';
 import type { ProductionRecord } from '../types';
 
+// 螺栓生产记录类型（无物料代码）
+type BoltProductionRecord = Omit<ProductionRecord, 'materialCode'>;
+
 /* ─── 工具函数 ─── */
 const generateUUID = () => {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -18,7 +21,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const calcRate = (part: number, total: number) =>
   total > 0 ? round2((part / total) * 100) : 0;
 
-const calcDerived = (f: ProductionRecord): ProductionRecord => {
+const calcDerived = (f: BoltProductionRecord): BoltProductionRecord => {
   const defectSum =
     f.defectShort + f.defectBurst + f.defectBottomConvex +
     f.defectVoltage + f.defectAppearance + f.defectLeakage +
@@ -32,10 +35,10 @@ const calcDerived = (f: ProductionRecord): ProductionRecord => {
   return { ...f, actualQty, loss, firstBottomConvexShortBurstRate, firstPassRate };
 };
 
-const emptyRecord = (): ProductionRecord => ({
+const emptyRecord = (): BoltProductionRecord => ({
   id: generateUUID(),
   entryDate: new Date().toISOString().slice(0, 10),
-  seq: '', materialCode: '', spec: '', size: '', workOrderNo: '',
+  seq: '', spec: '', size: '', workOrderNo: '',
   positiveFoilVoltage: '', designQty: 0, actualQty: 0, windingQty: 0,
   goodQty: 0, loss: 0, firstBottomConvexShortBurstRate: 0, firstPassRate: 0,
   batchYieldRate: undefined,
@@ -138,7 +141,7 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
   if (raw.length < 2) return [];
 
   // 找表头行（必须包含至少3个业务关键字）
-  const HEADER_KEYWORDS = ['日期', '序号', '物料代码', '规格', '流转单号', '良品数'];
+  const HEADER_KEYWORDS = ['日期', '序号', '规格', '流转单号', '良品数'];
   let foundHeaderRowIdx = -1;
   for (let i = 0; i < Math.min(raw.length, 10); i++) {
     if (!raw[i]) continue;
@@ -170,7 +173,6 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
   const fieldToColIdx: Record<string, number> = {
     entryDate: headerColIndexMap['录入日期'] ?? -1,
     seq: headerColIndexMap['序号'] ?? -1,
-    materialCode: headerColIndexMap['物料代码'] ?? -1,
     spec: headerColIndexMap['规格'] ?? -1,
     size: headerColIndexMap['尺寸'] ?? -1,
     workOrderNo: headerColIndexMap['流转单号'] ?? -1,
@@ -203,7 +205,7 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
     (row) => row && (row as unknown[]).some((c) => c != null && c !== '')
   );
 
-  return dataRows.map((row, dataRowIdx): ProductionRecord => {
+  return dataRows.map((row, dataRowIdx): BoltProductionRecord => {
     const obj: Record<string, unknown> = {};
     headers.forEach((h, i) => { if (h) obj[h] = (row as unknown[])[i]; });
 
@@ -223,11 +225,10 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
       entryDate = strFn(rawDate).slice(0, 10);
     }
 
-    const base: ProductionRecord = {
+    const base: BoltProductionRecord = {
       id: generateUUID(),
       entryDate,
       seq: strFn(g(['序号', 'seq'])),
-      materialCode: strFn(g(['物料代码', 'materialCode'])),
       spec: strFn(g(['规格', 'spec'])),
       size: strFn(g(['尺寸', 'size'])),
       workOrderNo: strFn(g(['流转单号', 'workOrderNo'])),
@@ -289,10 +290,9 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
 }
 
 /* ─── Excel 导出列定义 ─── */
-const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: number }[] = [
+const EXPORT_COLUMNS: { key: keyof BoltProductionRecord; label: string; width: number }[] = [
   { key: 'entryDate', label: '录入日期', width: 12 },
   { key: 'seq', label: '序号', width: 8 },
-  { key: 'materialCode', label: '物料代码', width: 20 },
   { key: 'spec', label: '规格', width: 18 },
   { key: 'size', label: '尺寸', width: 12 },
   { key: 'workOrderNo', label: '流转单号', width: 14 },
@@ -320,7 +320,7 @@ const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: numbe
 ];
 // 批注字段映射（用于导出的列名）
 const COMMENT_FIELD_LABELS: Record<string, string> = {
-  entryDate: '录入日期', seq: '序号', materialCode: '物料代码', spec: '规格',
+  entryDate: '录入日期', seq: '序号', spec: '规格',
   size: '尺寸', workOrderNo: '流转单号', positiveFoilVoltage: '正箔电压',
   designQty: '设计数量', actualQty: '实际此单总数', windingQty: '卷绕数',
   goodQty: '良品数', loss: '损耗', firstBottomConvexShortBurstRate: '一次底凸短路爆破率',
@@ -462,25 +462,25 @@ function FilterDropdown({
   );
 }
 
-export default function StatsPage() {
+export default function BoltStatsPage() {
   const navigate = useNavigate();
 
   /* ── Sheet 列表（本地缓存）── */
   const [localSheets, setLocalSheets] = useState<LocalSheet[]>([]);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
-  const [sheetRecords, setSheetRecords] = useState<ProductionRecord[]>([]);
+  const [sheetRecords, setSheetRecords] = useState<BoltProductionRecord[]>([]);
 
   /* ── UI 状态 ── */
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<ProductionRecord>(emptyRecord());
+  const [form, setForm] = useState<BoltProductionRecord>(emptyRecord());
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMsg, setToastMsg] = useState('');
   const [loading, setLoading] = useState(true);   // 初始加载中
   const [saving, setSaving] = useState(false);   // 保存中
 
   /* ── 排序状态 ── */
-  type SortField = keyof ProductionRecord | '';
+  type SortField = keyof BoltProductionRecord | '';
   type SortDir = 'asc' | 'desc' | '';
   const [sortField, setSortField] = useState<SortField>('');
   const [sortDir, setSortDir] = useState<SortDir>('');
@@ -517,9 +517,9 @@ export default function StatsPage() {
   };
 
   /* ── 搜索过滤 + 列筛选 ── */
-  const getCellValue = (r: ProductionRecord, field: SortField): string | number => {
-    const fieldMap: Record<string, keyof ProductionRecord> = {
-      entryDate: 'entryDate', seq: 'seq', materialCode: 'materialCode', spec: 'spec',
+  const getCellValue = (r: BoltProductionRecord, field: SortField): string | number => {
+    const fieldMap: Record<string, keyof BoltProductionRecord> = {
+      entryDate: 'entryDate', seq: 'seq', spec: 'spec',
       size: 'size', workOrderNo: 'workOrderNo', positiveFoilVoltage: 'positiveFoilVoltage',
       designQty: 'designQty', actualQty: 'actualQty', windingQty: 'windingQty',
       goodQty: 'goodQty', loss: 'loss', firstBottomConvexShortBurstRate: 'firstBottomConvexShortBurstRate',
@@ -530,7 +530,7 @@ export default function StatsPage() {
       defectDF: 'defectDF', operator: 'operator', notes: 'notes', reworkOrderNo: 'reworkOrderNo',
     };
     const key = fieldMap[field] ?? field;
-    const val = r[key as keyof ProductionRecord];
+    const val = r[key as keyof BoltProductionRecord];
     // 序号列按数字排序
     if (field === 'seq') {
       const na = Number(String(val).replace(/\D/g, ''));
@@ -548,7 +548,7 @@ export default function StatsPage() {
       // 关键字搜索
       const q = searchQuery.trim().toLowerCase();
       const matchSearch = !q || (
-        r.entryDate.includes(q) || r.materialCode.toLowerCase().includes(q) ||
+        r.entryDate.includes(q) ||
         r.workOrderNo.toLowerCase().includes(q) || r.spec.toLowerCase().includes(q) ||
         r.operator.toLowerCase().includes(q)
       );
@@ -584,7 +584,7 @@ export default function StatsPage() {
     const batchYieldRate = batchYieldValues.length > 0
       ? round4(batchYieldValues.reduce((a, b) => a + b, 0) / batchYieldValues.length)
       : undefined;
-    const sum = (key: keyof ProductionRecord) => filtered.reduce((s, r) => s + ((r[key] as number) ?? 0), 0);
+    const sum = (key: keyof BoltProductionRecord) => filtered.reduce((s, r) => s + ((r[key] as number) ?? 0), 0);
     return {
       totalDesign, totalActual, totalWinding, totalGood,
       lossRate, firstBSBRate, firstPassRate, batchYieldRate,
@@ -651,7 +651,7 @@ export default function StatsPage() {
 
     // 保存到数据库
     await supabase
-      .from('records')
+      .from('bolt_records')
       .update({ comments: Object.keys(updatedComments).length > 0 ? updatedComments : null })
       .eq('id', commentTarget.recordId);
 
@@ -667,8 +667,8 @@ export default function StatsPage() {
 
   // 渲染带批注的单元格
   const renderCommentCell = (
-    r: ProductionRecord,
-    field: keyof ProductionRecord,
+    r: BoltProductionRecord,
+    field: keyof BoltProductionRecord,
     display: string,
     extraClass: string = ''
   ) => {
@@ -723,7 +723,7 @@ export default function StatsPage() {
 
       try {
         const { data: cloudSheets, error } = await supabase
-          .from('sheets')
+          .from('bolt_sheets')
           .select('id, name, "order"')
           .order('created_at', { ascending: true });
 
@@ -733,7 +733,7 @@ export default function StatsPage() {
         if (!cloudSheets || cloudSheets.length === 0) {
           // 首次使用，创建默认 Sheet
           const { data: newSheet, error: insertError } = await supabase
-            .from('sheets')
+            .from('bolt_sheets')
             .insert({ name: '工作表1', 'order': [], user_id: user.id })
             .select('id, name, "order"')
             .single();
@@ -771,7 +771,7 @@ export default function StatsPage() {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('records')
+        .from('bolt_records')
         .select('*')
         .eq('sheet_id', sheetId)
         .order('entry_date', { ascending: false });
@@ -785,7 +785,6 @@ export default function StatsPage() {
           id: r.id,
           entryDate: r.entry_date ?? '',
           seq: r.seq ?? '',
-          materialCode: r.material_code ?? '',
           spec: r.spec ?? '',
           size: r.size ?? '',
           workOrderNo: r.work_order_no ?? '',
@@ -846,7 +845,7 @@ export default function StatsPage() {
     while (localSheets.find((s) => s.name === name)) { n++; name = `工作表${n}`; }
 
     const { data: newSheet } = await supabase
-      .from('sheets')
+      .from('bolt_sheets')
       .insert({ name, 'order': [], user_id: user.id })
       .select('id, name')
       .single();
@@ -873,7 +872,7 @@ export default function StatsPage() {
     if (localSheets.find((s) => s.name === newName && s.id !== renamingSheet.id)) {
       alert('该名称已存在'); return;
     }
-    await supabase.from('sheets').update({ name: newName }).eq('id', renamingSheet.id);
+    await supabase.from('bolt_sheets').update({ name: newName }).eq('id', renamingSheet.id);
     setLocalSheets((prev) =>
       prev.map((s) => s.id === renamingSheet.id ? { ...s, name: newName } : s)
     );
@@ -884,7 +883,7 @@ export default function StatsPage() {
   const deleteSheet = async (sheet: LocalSheet) => {
     if (localSheets.length === 1) { alert('至少保留一个工作表'); return; }
     if (!confirm(`确认删除工作表「${sheet.name}」及其所有数据？`)) return;
-    await supabase.from('sheets').delete().eq('id', sheet.id);
+    await supabase.from('bolt_sheets').delete().eq('id', sheet.id);
     const remaining = localSheets.filter((s) => s.id !== sheet.id);
     setLocalSheets(remaining);
     if (activeSheetId === sheet.id) {
@@ -908,17 +907,16 @@ export default function StatsPage() {
     setForm(base);
     setShowForm(true);
   };
-  const openEdit = (r: ProductionRecord) => { setEditingId(r.id); setForm({ ...r }); setShowForm(true); };
+  const openEdit = (r: BoltProductionRecord) => { setEditingId(r.id); setForm({ ...r }); setShowForm(true); };
 
   const deleteRecord = async (id: string) => {
     if (!confirm('确认删除这条记录吗？')) return;
-    await supabase.from('records').delete().eq('id', id);
+    await supabase.from('bolt_records').delete().eq('id', id);
     setSheetRecords((prev) => prev.filter((r) => r.id !== id));
     showToast('已删除');
   };
 
   const saveRecord = async () => {
-    if (!form.materialCode.trim()) { alert('请填写物料代码'); return; }
     if (!form.workOrderNo.trim()) { alert('请填写流转单号'); return; }
     if (!activeSheetId) { alert('未选择工作表'); return; }
 
@@ -932,7 +930,6 @@ export default function StatsPage() {
       sheet_id: activeSheetId,
       entry_date: final.entryDate || new Date().toISOString().slice(0, 10),  // 空日期使用今天
       seq: final.seq,
-      material_code: final.materialCode,
       spec: final.spec,
       size: final.size,
       work_order_no: final.workOrderNo,
@@ -961,13 +958,13 @@ export default function StatsPage() {
 
     if (editingId) {
       // 编辑
-      await supabase.from('records').update(recordCloudData).eq('id', editingId);
+      await supabase.from('bolt_records').update(recordCloudData).eq('id', editingId);
       setSheetRecords((prev) => prev.map((r) => r.id === editingId ? { ...final, id: editingId } : r));
       showToast('修改成功');
     } else {
       // 新增
       const { data: inserted } = await supabase
-        .from('records')
+        .from('bolt_records')
         .insert({ ...recordCloudData, id: generateUUID() } as Record<string, unknown>)
         .select()
         .single();
@@ -1021,7 +1018,7 @@ export default function StatsPage() {
           if (!localSheet) {
             // 先检查数据库中是否已存在同名 sheet（其他用户创建的）
             const { data: existingSheet } = await supabase
-              .from('sheets')
+              .from('bolt_sheets')
               .select('id, name')
               .eq('name', sheetName)
               .maybeSingle();
@@ -1036,7 +1033,7 @@ export default function StatsPage() {
             } else {
               // 创建新 sheet
               const { data: newSheet } = await supabase
-                .from('sheets')
+                .from('bolt_sheets')
                 .insert({ name: sheetName, 'order': [], user_id: user.id })
                 .select('id, name')
                 .single();
@@ -1047,7 +1044,7 @@ export default function StatsPage() {
           } else {
             // 本地已存在，检查数据库是否也有（可能其他用户创建了同名 sheet）
             const { data: existingSheet } = await supabase
-              .from('sheets')
+              .from('bolt_sheets')
               .select('id, name')
               .eq('name', sheetName)
               .maybeSingle();
@@ -1061,7 +1058,7 @@ export default function StatsPage() {
           }
 
           // 覆盖模式：先删除该 sheet 的所有旧记录
-          await supabase.from('records').delete().eq('sheet_id', localSheet!.id);
+          await supabase.from('bolt_records').delete().eq('sheet_id', localSheet!.id);
 
           // 插入新记录
           const today = new Date().toISOString().slice(0, 10);
@@ -1070,7 +1067,6 @@ export default function StatsPage() {
             sheet_id: localSheet!.id,
             entry_date: r.entryDate || today,  // 空日期使用今天
             seq: r.seq,
-            material_code: r.materialCode,
             spec: r.spec,
             size: r.size,
             work_order_no: r.workOrderNo,
@@ -1098,7 +1094,7 @@ export default function StatsPage() {
             comments: r.comments || null,
           }));
 
-          await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
+          await supabase.from('bolt_records').insert(cloudRecords as Record<string, unknown>[]);
           totalCount += validRecords.length;
 
           // 如果当前在导入的 sheet 上，更新记录
@@ -1144,7 +1140,7 @@ export default function StatsPage() {
     const ws = XLSX.utils.json_to_sheet(exportData);
     ws['!cols'] = [...EXPORT_COLUMNS.map(({ width }) => ({ wch: width })), { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, ws, activeSheetName);
-    XLSX.writeFile(wb, `生产良率记录_${activeSheetName}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `螺栓生产良率记录_${activeSheetName}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     showToast('导出成功');
   };
 
@@ -1158,7 +1154,7 @@ export default function StatsPage() {
   const inputCls = 'w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition';
 
   // 获取某字段的历史唯一值（按出现顺序去重）
-  const getFieldOptions = (field: keyof ProductionRecord): string[] => {
+  const getFieldOptions = (field: keyof BoltProductionRecord): string[] => {
     const seen = new Set<string>();
     const result: string[] = [];
     sheetRecords.forEach((r) => {
@@ -1174,20 +1170,20 @@ export default function StatsPage() {
     return result;
   };
 
-  const numInput = (field: keyof ProductionRecord, placeholder = '0') => (
+  const numInput = (field: keyof BoltProductionRecord, placeholder = '0') => (
     <input type="number" min="0" placeholder={placeholder}
       value={(form[field] as number) || ''}
       onChange={(e) => setForm((f) => calcDerived({ ...f, [field]: Number(e.target.value) || 0 }))}
       className={inputCls} />
   );
-  const textInput = (field: keyof ProductionRecord, placeholder = '') => (
+  const textInput = (field: keyof BoltProductionRecord, placeholder = '') => (
     <input type="text" placeholder={placeholder}
       value={(form[field] as string) || ''}
       onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
       className={inputCls} />
   );
   // 带下拉建议的输入框（datalist 实现）
-  const textInputWithDatalist = (field: keyof ProductionRecord, placeholder = '') => {
+  const textInputWithDatalist = (field: keyof BoltProductionRecord, placeholder = '') => {
     const datalistId = `datalist-${field}`;
     const options = getFieldOptions(field);
     return (
@@ -1205,7 +1201,7 @@ export default function StatsPage() {
     );
   };
 
-  const parseNoteForDefectTypes = (note: string, record: ProductionRecord): Record<string, number> => {
+  const parseNoteForDefectTypes = (note: string, record: BoltProductionRecord): Record<string, number> => {
     const typeMap: Record<string, number> = {};
     if (!note || note.trim() === '' || note.trim() === '/' || note.trim() === '／') return typeMap;
 
@@ -1508,7 +1504,7 @@ export default function StatsPage() {
   const midVoltageRecords  = sheetRecords.filter(r => { const v = parseSpecVoltage(r.spec); return v !== null && v >= 160 && v < 400; });
   const highVoltageRecords = sheetRecords.filter(r => { const v = parseSpecVoltage(r.spec); return v !== null && v >= 400; });
 
-  const calcAvgLossRate = (records: ProductionRecord[]): number => {
+  const calcAvgLossRate = (records: BoltProductionRecord[]): number => {
     if (records.length === 0) return 0;
     const totalD = records.reduce((s, r) => s + r.designQty, 0);
     const totalA = records.reduce((s, r) => s + r.actualQty, 0);
@@ -1624,7 +1620,7 @@ export default function StatsPage() {
 
       {/* 顶部工具栏 */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <h1 className="text-3xl font-bold text-gray-900">生产良率统计</h1>
+        <h1 className="text-3xl font-bold text-gray-900">螺栓生产良率统计</h1>
         <p className="text-gray-500 text-sm hidden sm:block">牛角车间 · 云端同步</p>
         <div className="flex items-center gap-2 ml-auto">
           <button
@@ -1740,7 +1736,7 @@ export default function StatsPage() {
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
-              type="text" placeholder="搜索日期/物料代码/流转单号/规格…"
+              type="text" placeholder="搜索日期/流转单号/规格…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition" />
@@ -1762,18 +1758,17 @@ export default function StatsPage() {
               <colgroup>
               <col style={{width: '100px', minWidth: '100px'}} />
               <col style={{width: '50px', minWidth: '50px'}} />
+              <col style={{width: '130px', minWidth: '130px'}} />
+              <col style={{width: '80px', minWidth: '80px'}} />
+              <col style={{width: '110px', minWidth: '110px'}} />
               <col style={{width: '120px', minWidth: '120px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '120px', minWidth: '120px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
               <col style={{width: '100px', minWidth: '100px'}} />
+              <col style={{width: '120px', minWidth: '120px'}} />
+              <col style={{width: '90px', minWidth: '90px'}} />
+              <col style={{width: '90px', minWidth: '90px'}} />
+              <col style={{width: '80px', minWidth: '80px'}} />
               <col style={{width: '110px', minWidth: '110px'}} />
               <col style={{width: '90px', minWidth: '90px'}} />
-              <col style={{width: '90px', minWidth: '90px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '100px', minWidth: '100px'}} />
-              <col style={{width: '90px', minWidth: '90px'}} />
               <col style={{width: '80px', minWidth: '80px'}} />
               <col style={{width: '60px', minWidth: '60px'}} />
               <col style={{width: '60px', minWidth: '60px'}} />
@@ -1784,9 +1779,8 @@ export default function StatsPage() {
               <col style={{width: '60px', minWidth: '60px'}} />
               <col style={{width: '60px', minWidth: '60px'}} />
               <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '130px', minWidth: '130px'}} />
-              <col style={{width: '100px', minWidth: '100px'}} />
-              <col style={{width: '70px', minWidth: '70px'}} />
+              <col style={{width: '170px', minWidth: '170px'}} />
+              <col style={{width: '110px', minWidth: '110px'}} />
               <col style={{width: '70px', minWidth: '70px'}} />
             </colgroup>
 <thead className="sticky top-0 z-10 bg-gray-50">
@@ -1794,7 +1788,6 @@ export default function StatsPage() {
                   {[
                     { key: 'entryDate', label: '录入日期' },
                     { key: 'seq', label: '序号' },
-                    { key: 'materialCode', label: '物料代码' },
                     { key: 'spec', label: '规格' },
                     { key: 'size', label: '尺寸' },
                     { key: 'workOrderNo', label: '流转单号' },
@@ -1884,17 +1877,16 @@ export default function StatsPage() {
                   <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
                     <td className="px-2 py-1.5 text-indigo-700 text-center min-w-0 overflow-hidden truncate" style={{width:'100px'}}>汇总 ({filtered.length} 条)</td>
                     <td className="px-2 py-1.5" style={{width:'50px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'130px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
+                    <td className="px-2 py-1.5" style={{width:'110px'}}></td>
                     <td className="px-2 py-1.5" style={{width:'120px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'120px'}}></td>
-                    <td className="px-2 py-1.5" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'90px'}}>{summary.totalDesign.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 font-medium" style={{width:'90px'}}>{summary.totalActual.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'100px'}}>{summary.totalDesign.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-600 font-medium" style={{width:'120px'}}>{summary.totalActual.toLocaleString()}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.totalWinding.toLocaleString()}</td>
                     <td className="px-2 py-1.5 text-center text-green-600 font-medium" style={{width:'80px'}}>{summary.totalGood.toLocaleString()}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.lossRate >= 0 ? "+" + formatNum(summary.lossRate) + "%" : formatNum(summary.lossRate) + "%"}</td>
-                    <td className="px-2 py-1.5 text-center text-red-500" style={{width:'100px'}}>{formatNum(summary.firstBSBRate)}%</td>
+                    <td className="px-2 py-1.5 text-center text-red-500" style={{width:'110px'}}>{formatNum(summary.firstBSBRate)}%</td>
                     <td className="px-2 py-1.5 text-center text-blue-600" style={{width:'80px'}}>{formatNum(summary.firstPassRate)}%</td>
                     <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.batchYieldRate > 0 ? formatNum(summary.batchYieldRate) + "%" : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectShort > 0 ? formatNum(summary.defectShort) : "—"}</td>
@@ -1907,8 +1899,8 @@ export default function StatsPage() {
                     <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectLowCap > 0 ? formatNum(summary.defectLowCap) : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectDF > 0 ? formatNum(summary.defectDF) : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'80px'}}>—</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'150px'}}>—</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'100px'}}>—</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'170px'}}>—</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'110px'}}>—</td>
                     <td className="px-2 py-1.5 text-center text-indigo-400" style={{width:'70px'}}>—</td>
                   </tr>
                 </tfoot><tbody>
@@ -1916,7 +1908,6 @@ export default function StatsPage() {
                   <tr key={r.id} className={`group hover:bg-indigo-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
                     {renderCommentCell(r, 'entryDate', r.entryDate, 'whitespace-normal')}
                     {renderCommentCell(r, 'seq', r.seq)}
-                    {renderCommentCell(r, 'materialCode', r.materialCode, 'font-medium text-gray-800')}
                     {renderCommentCell(r, 'spec', r.spec)}
                     {renderCommentCell(r, 'size', r.size)}
                     {renderCommentCell(r, 'workOrderNo', r.workOrderNo)}
@@ -1940,7 +1931,7 @@ export default function StatsPage() {
                     {renderCommentCell(r, 'defectDF', r.defectDF ? formatNum(r.defectDF) : '—')}
                     {/* 作业员和备注不支持批注，保持原样 */}
                     <td className="px-2 py-1.5">{r.operator}</td>
-                    <td className="px-2 py-1.5 max-w-[120px] truncate" title={r.notes}>{r.notes}</td>
+                    <td className="px-2 py-1.5 max-w-[170px] truncate" title={r.notes}>{r.notes}</td>
                     {renderCommentCell(r, 'reworkOrderNo', r.reworkOrderNo)}
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2155,10 +2146,6 @@ export default function StatsPage() {
                     {textInput('seq', '自动编号')}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">物料代码 <span className="text-red-400">*</span></label>
-                    {textInputWithDatalist('materialCode', 'H1.HK.2G.6023')}
-                  </div>
-                  <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">规格</label>
                     {textInputWithDatalist('spec', '400V680uF')}
                   </div>
@@ -2263,7 +2250,7 @@ export default function StatsPage() {
                   </div>
                   <div className="md:col-span-3">
                     <label className="block text-xs font-medium text-gray-500 mb-1">备注</label>
-                    <textarea value={(form as ProductionRecord).notes || ''}
+                    <textarea value={(form as BoltProductionRecord).notes || ''}
                       onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                       rows={2} className={inputCls} placeholder="备注信息…" />
                   </div>

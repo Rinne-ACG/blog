@@ -40,7 +40,7 @@ export interface ProductionRecord {
   // 良率统计（%，自动计算或手动填写）
   firstBottomConvexShortBurstRate: number; // 一次底凸短路爆破率
   firstPassRate: number;   // 一次直通率
-  batchYieldRate: number;  // 整批良率
+  batchYieldRate?: number;  // 整批良率（手动填写，导入时无值则为空）
 
   // 不良分类（件数）
   defectShort: number;     // 短路

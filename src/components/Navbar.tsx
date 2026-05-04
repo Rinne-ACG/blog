@@ -27,7 +27,8 @@ export default function Navbar() {
   const links = [
     { to: '/', label: '文章' },
     { to: '/gallery', label: '图片' },
-    { to: '/stats', label: '统计' },
+    { to: '/stats', label: '生产统计' },
+    { to: '/bolt-stats', label: '螺栓统计' },
     { to: '/tags', label: '标签' },
     { to: '/about', label: '关于' },
   ];
