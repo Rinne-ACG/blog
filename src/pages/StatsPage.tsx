@@ -708,11 +708,15 @@ export default function StatsPage() {
     let ignore = false;
 
     async function init() {
+      // 获取用户（容错处理锁竞争）
+      let user;
       try {
-        const { data, error } = await supabase.auth.getUser().catch(() => ({ data: { user: null }, error: null }));
-        const user = error ? null : data.user;
-        if (!user || ignore) return;
+        const res = await supabase.auth.getUser();
+        user = res.error ? null : res.data.user;
+      } catch (e) { user = null; }
+      if (!user || ignore) return;
 
+      try {
         const { data: cloudSheets, error } = await supabase
           .from('sheets')
           .select('id, name, "order"')
