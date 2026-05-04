@@ -1144,6 +1144,87 @@ export default function BoltStatsPage() {
     showToast('导出成功');
   };
 
+  /* ── 导出全部工作表 ── */
+  const handleExportAll = async () => {
+    if (!sheets.length) { alert('没有工作表可导出'); return; }
+    try {
+      showToast('正在导出全部工作表，请稍候…');
+      const sheetIds = sheets.map(s => s.id);
+      const { data, error } = await supabase
+        .from('records')
+        .select('*')
+        .in('sheet_id', sheetIds);
+      if (error) throw error;
+      if (!data || data.length === 0) { alert('所有工作表均无数据'); return; }
+
+      // 按 sheet_id 分组
+      const map: Record<string, any[]> = {};
+      data.forEach((r: any) => {
+        const sid = r.sheet_id;
+        if (!map[sid]) map[sid] = [];
+        map[sid].push(r);
+      });
+
+      const wb = XLSX.utils.book_new();
+      sheets.forEach(({ id, name }) => {
+        const rows = (map[id] ?? []).map((r: any) => {
+          const rec: Record<string, unknown> = {};
+          EXPORT_COLUMNS.forEach(({ key, label }) => {
+            const dbFieldMap: Record<string, unknown> = {
+              'entryDate':           r.entry_date ?? '',
+              'seq':                r.seq ?? '',
+              'spec':               r.spec ?? '',
+              'size':               r.size ?? '',
+              'workOrderNo':        r.work_order_no ?? '',
+              'positiveFoilVoltage': r.positive_foil_voltage ?? '',
+              'designQty':          r.design_qty ?? 0,
+              'actualQty':          r.actual_qty ?? 0,
+              'windingQty':         r.winding_qty ?? 0,
+              'goodQty':            r.good_qty ?? 0,
+              'loss':               Number(r.loss) ?? 0,
+              'firstBottomConvexShortBurstRate': Number(r.first_bottom_convex_short_burst_rate) ?? 0,
+              'firstPassRate':       Number(r.first_pass_rate) ?? 0,
+              'batchYieldRate':     r.batch_yield_rate ?? undefined,
+              'defectShort':        r.defect_short ?? 0,
+              'defectBurst':        r.defect_burst ?? 0,
+              'defectBottomConvex':  r.defect_bottom_convex ?? 0,
+              'defectVoltage':       r.defect_voltage ?? 0,
+              'defectAppearance':    r.defect_appearance ?? 0,
+              'defectLeakage':      r.defect_leakage ?? 0,
+              'defectHighCap':      r.defect_high_cap ?? 0,
+              'defectLowCap':       r.defect_low_cap ?? 0,
+              'defectDF':           r.defect_df ?? 0,
+              'operator':           r.operator ?? '',
+              'notes':              r.notes ?? '',
+              'reworkOrderNo':      r.rework_order_no ?? '',
+            };
+            rec[label] = dbFieldMap[key as string] ?? '';
+          });
+          if (r.comments && typeof r.comments === 'object') {
+            const parts: string[] = [];
+            Object.entries(r.comments as Record<string,string>).forEach(([field, content]) => {
+              const lbl = COMMENT_FIELD_LABELS[field] || field;
+              parts.push(`${lbl}:${content}`);
+            });
+            rec['批注'] = parts.join('; ');
+          } else {
+            rec['批注'] = '';
+          }
+          return rec;
+        });
+        const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [...EXPORT_COLUMNS.map(({ width }) => ({ wch: width })), { wch: 30 }];
+        const sheetName = name.length > 31 ? name.slice(0, 31) : name;
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      });
+      XLSX.writeFile(wb, `螺栓生产良率记录_全部_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      showToast('全部工作表导出成功');
+    } catch (err: any) {
+      console.error('导出全部失败:', err);
+      showToast('导出失败：' + (err.message || err));
+    }
+  };
+
   /* ── 退出登录 ── */
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -1727,6 +1808,15 @@ export default function BoltStatsPage() {
                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             导出 Excel
+          </button>
+
+          <button onClick={handleExportAll}
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 text-sm font-medium transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            导出全部
           </button>
 
           {/* 搜索框 */}
