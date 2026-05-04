@@ -1003,20 +1003,57 @@ export default function StatsPage() {
           const validRecords = records.filter((r) => r.workOrderNo && r.workOrderNo.trim() !== '');
           if (!validRecords.length) continue;
 
-          // 找到或创建同名 sheet
+          // 找到或创建同名 sheet（覆盖模式）
           let localSheet = localSheets.find((s) => s.name === sheetName);
+          let sheetExists = !!localSheet;
+
           if (!localSheet) {
-            const { data: newSheet } = await supabase
+            // 先检查数据库中是否已存在同名 sheet（其他用户创建的）
+            const { data: existingSheet } = await supabase
               .from('sheets')
-              .insert({ name: sheetName, 'order': [], user_id: user.id })
               .select('id, name')
-              .single();
-            if (!newSheet) continue;
-            localSheet = { id: newSheet.id, name: newSheet.name };
-            setLocalSheets((prev) => [...prev, localSheet!]);
+              .eq('name', sheetName)
+              .maybeSingle();
+
+            if (existingSheet) {
+              // 复用已存在的 sheet
+              localSheet = { id: existingSheet.id, name: existingSheet.name };
+              sheetExists = true;
+              // 如果本地没有，添加到本地状态
+              if (!localSheets.find((s) => s.id === localSheet!.id)) {
+                setLocalSheets((prev) => [...prev, localSheet!]);
+              }
+            } else {
+              // 创建新 sheet
+              const { data: newSheet } = await supabase
+                .from('sheets')
+                .insert({ name: sheetName, 'order': [], user_id: user.id })
+                .select('id, name')
+                .single();
+              if (!newSheet) continue;
+              localSheet = { id: newSheet.id, name: newSheet.name };
+              setLocalSheets((prev) => [...prev, localSheet!]);
+            }
+          } else {
+            // 本地已存在，检查数据库是否也有（可能其他用户创建了同名 sheet）
+            const { data: existingSheet } = await supabase
+              .from('sheets')
+              .select('id, name')
+              .eq('name', sheetName)
+              .maybeSingle();
+            if (existingSheet && existingSheet.id !== localSheet.id) {
+              // 数据库有同名但不同 id，更新本地 sheet id
+              localSheet = { id: existingSheet.id, name: existingSheet.name };
+              setLocalSheets((prev) =>
+                prev.map((s) => s.name === sheetName ? localSheet! : s)
+              );
+            }
           }
 
-          // 插入记录
+          // 覆盖模式：先删除该 sheet 的所有旧记录
+          await supabase.from('records').delete().eq('sheet_id', localSheet!.id);
+
+          // 插入新记录
           const today = new Date().toISOString().slice(0, 10);
           const cloudRecords = validRecords.map((r) => ({
             id: generateUUID(),
