@@ -1293,14 +1293,17 @@ export default function StatsPage() {
           continue;
         }
         // 中文数字："两个XXX"、"三颗XXX"、"十五颗XXX"
-        // 解析中文数字（支持个位、整十、十几等）
+        // 解析中文数字（支持个位、整十、十几、几十几等）
         const parseChineseNumber = (s: string): { qty: number; rest: string } | null => {
           const digits: Record<string, number> = { '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
-          // 匹配：二十三、十五、十、十一等
-          const match = s.match(/^([零一二三四五六七八九十]+)\s*(?:个|颗|粒)?/);
+          // 匹配：中文数字 + 可选量词(个/颗/粒) + 不良类型
+          const match = s.match(/^([零一二三四五六七八九十]+)\s*(?:个|颗|粒)?\s*(.*)$/);
           if (!match) return null;
           const cnNum = match[1];
-          const rest = s.substring(match[0].length).trim();
+          let rest = match[2].trim(); // 去掉量词后的剩余部分
+          
+          // 去掉"的情况"、"的情况"等无用后缀
+          rest = rest.replace(/的情况$/, '').trim();
 
           // 转换为数字
           let qty = 0;
@@ -1313,7 +1316,7 @@ export default function StatsPage() {
             qty = (digits[parts[0]] || 0) * 10 + (digits[parts[1]] || 0);
           }
           else { qty = digits[cnNum] ?? 0; }
-
+          
           if (qty > 0 && rest) return { qty, rest };
           return null;
         };
@@ -1354,6 +1357,7 @@ export default function StatsPage() {
         }
       }
     }
+    console.log('[parseNote] 解析结果:', note, typeMap);
     return typeMap;
   };
 
