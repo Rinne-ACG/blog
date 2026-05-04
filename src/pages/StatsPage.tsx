@@ -715,7 +715,6 @@ export default function StatsPage() {
         const { data: cloudSheets, error } = await supabase
           .from('sheets')
           .select('id, name, "order"')
-          .eq('user_id', user.id)
           .order('created_at', { ascending: true });
 
         if (ignore) return;
