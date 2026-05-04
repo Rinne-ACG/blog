@@ -1281,8 +1281,8 @@ export default function StatsPage() {
           let qty = 0;
           if (/^\d+$/.test(cnNum)) { qty = parseInt(cnNum, 10); } // 已经是阿拉伯数字
           else if (cnNum === '十') { qty = 10; }
-          else if (cnNum.startsWith('十')) { qty = 10 + (digits[cnNum[1]] || 0); } // 十几
-          else if (cnNum.endsWith('十')) { qty = (digits[cnNum[0]] || 0) * 10; } // 几十
+          else if (cnNum.startsWith('十') && cnNum.length === 2) { qty = 10 + (digits[cnNum[1]] || 0); } // 十几
+          else if (cnNum.endsWith('十') && cnNum.length === 2) { qty = (digits[cnNum[0]] || 0) * 10; } // 几十
           else if (cnNum.includes('十') && cnNum.length > 2) { // 几十几，如二十三
             const parts = cnNum.split('十');
             qty = (digits[parts[0]] || 0) * 10 + (digits[parts[1]] || 0);
