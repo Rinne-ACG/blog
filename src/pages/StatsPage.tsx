@@ -1333,10 +1333,15 @@ export default function StatsPage() {
       });
     }
     mainItems.sort((a, b) => b.count - a.count);
+    // 使用原始百分比计算累积，最后一项限制不超过100%
     let cumulative = 0;
-    const itemsWithCumulative = mainItems.map(item => {
-      cumulative += item.percentage;
-      return { ...item, cumulativePercentage: round2(cumulative) };
+    const itemsWithCumulative = mainItems.map((item, idx) => {
+      const rawPercent = (item.count / totalCount) * 100;
+      cumulative += rawPercent;
+      // 最后一项确保累积百分比不超过100%
+      const isLastItem = idx === mainItems.length - 1;
+      const cumulativePercentage = isLastItem ? Math.min(round2(cumulative), 100) : round2(cumulative);
+      return { ...item, cumulativePercentage };
     });
     return { items: itemsWithCumulative, totalCount };
   };
