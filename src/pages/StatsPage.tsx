@@ -709,7 +709,8 @@ export default function StatsPage() {
 
     async function init() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data, error } = await supabase.auth.getUser().catch(() => ({ data: { user: null }, error: null }));
+        const user = error ? null : data.user;
         if (!user || ignore) return;
 
         const { data: cloudSheets, error } = await supabase
@@ -983,8 +984,12 @@ export default function StatsPage() {
         const data = new Uint8Array(evt.target!.result as ArrayBuffer);
         const fileBuffer = evt.target!.result as ArrayBuffer;
         const wb = XLSX.read(data, { type: 'array', cellDates: true });
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        let user;
+        try {
+          const { data, error } = await supabase.auth.getUser();
+          user = error ? null : data.user;
+        } catch (e) { user = null; }
+        if (!user) { showToast('请先登录'); return; }
 
         let totalCount = 0;
 
