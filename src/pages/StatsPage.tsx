@@ -1258,13 +1258,34 @@ export default function StatsPage() {
           hasExplicitQty = true;
           continue;
         }
-        // 中文数字："两个XXX"、"三颗XXX"
-        const cnNumMap: Record<string, number> = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
-        const cnMatch = item.match(/^([一二两三四五六七八九十])\s*(?:个|颗|粒)?/);
-        if (cnMatch && cnNumMap[cnMatch[1]]) {
-          const qty = cnNumMap[cnMatch[1]];
-          const rest = item.replace(/^[一二两三四五六七八九十]\s*(?:个|颗|粒)?/, '').trim();
-          if (rest) parsedItems.push({ defectType: rest, qty });
+        // 中文数字："两个XXX"、"三颗XXX"、"十五颗XXX"
+        // 解析中文数字（支持个位、整十、十几等）
+        const parseChineseNumber = (s: string): { qty: number; rest: string } | null => {
+          const digits: Record<string, number> = { '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+          // 匹配：二十三、十五、十、十一等
+          const match = s.match(/^([零一二三四五六七八九十]+)\s*(?:个|颗|粒)?/);
+          if (!match) return null;
+          const cnNum = match[1];
+          const rest = s.substring(match[0].length).trim();
+
+          // 转换为数字
+          let qty = 0;
+          if (/^\d+$/.test(cnNum)) { qty = parseInt(cnNum, 10); } // 已经是阿拉伯数字
+          else if (cnNum === '十') { qty = 10; }
+          else if (cnNum.startsWith('十')) { qty = 10 + (digits[cnNum[1]] || 0); } // 十几
+          else if (cnNum.endsWith('十')) { qty = (digits[cnNum[0]] || 0) * 10; } // 几十
+          else if (cnNum.includes('十') && cnNum.length > 2) { // 几十几，如二十三
+            const parts = cnNum.split('十');
+            qty = (digits[parts[0]] || 0) * 10 + (digits[parts[1]] || 0);
+          }
+          else { qty = digits[cnNum] ?? 0; }
+
+          if (qty > 0 && rest) return { qty, rest };
+          return null;
+        };
+        const cnResult = parseChineseNumber(item);
+        if (cnResult) {
+          parsedItems.push({ defectType: cnResult.rest, qty: cnResult.qty });
           hasExplicitQty = true;
           continue;
         }
