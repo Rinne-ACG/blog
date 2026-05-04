@@ -1146,10 +1146,10 @@ export default function BoltStatsPage() {
 
   /* ── 导出全部工作表 ── */
   const handleExportAll = async () => {
-    if (!sheets.length) { alert('没有工作表可导出'); return; }
+    if (!localSheets.length) { alert('没有工作表可导出'); return; }
     try {
       showToast('正在导出全部工作表，请稍候…');
-      const sheetIds = sheets.map(s => s.id);
+      const sheetIds = localSheets.map(s => s.id);
       const { data, error } = await supabase
         .from('records')
         .select('*')
@@ -1166,7 +1166,7 @@ export default function BoltStatsPage() {
       });
 
       const wb = XLSX.utils.book_new();
-      sheets.forEach(({ id, name }) => {
+      localSheets.forEach(({ id, name }) => {
         const rows = (map[id] ?? []).map((r: any) => {
           const rec: Record<string, unknown> = {};
           EXPORT_COLUMNS.forEach(({ key, label }) => {
@@ -1978,7 +1978,7 @@ export default function BoltStatsPage() {
                     <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.lossRate >= 0 ? "+" + formatNum(summary.lossRate) + "%" : formatNum(summary.lossRate) + "%"}</td>
                     <td className="px-2 py-1.5 text-center text-red-500" style={{width:'110px'}}>{formatNum(summary.firstBSBRate)}%</td>
                     <td className="px-2 py-1.5 text-center text-blue-600" style={{width:'80px'}}>{formatNum(summary.firstPassRate)}%</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.batchYieldRate > 0 ? formatNum(summary.batchYieldRate) + "%" : "—"}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-900" style={{width:'80px'}}>{summary.batchYieldRate != null ? formatNum(summary.batchYieldRate) + "%" : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectShort > 0 ? formatNum(summary.defectShort) : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectBurst > 0 ? formatNum(summary.defectBurst) : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600" style={{width:'60px'}}>{summary.defectBottomConvex > 0 ? formatNum(summary.defectBottomConvex) : "—"}</td>
@@ -2009,7 +2009,7 @@ export default function BoltStatsPage() {
                     {(() => { const absLoss = Math.abs(r.loss); const hasComment = r.comments && r.comments['loss']; const colorClass = absLoss > 1 ? (hasComment ? 'text-yellow-600' : 'text-red-600') : (hasComment ? 'text-orange-500' : ''); return renderCommentCell(r, 'loss', r.loss >= 0 ? `+${formatNum(r.loss)}%` : `${formatNum(r.loss)}%`, colorClass); })()}
                     {(() => { const val = r.firstBottomConvexShortBurstRate; const hasComment = r.comments && r.comments['firstBottomConvexShortBurstRate']; const colorClass = val > 1 ? (hasComment ? 'text-yellow-600' : 'text-red-600') : (hasComment ? 'text-orange-500' : ''); return renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${formatNum(val)}%`, colorClass); })()}
                     {renderCommentCell(r, 'firstPassRate', `${formatNum(r.firstPassRate)}%`)}
-                    {renderCommentCell(r, 'batchYieldRate', r.batchYieldRate > 0 ? `${formatNum(r.batchYieldRate)}%` : '—')}
+                    {renderCommentCell(r, 'batchYieldRate', r.batchYieldRate != null ? `${formatNum(r.batchYieldRate)}%` : '—')}
                     {renderCommentCell(r, 'defectShort', r.defectShort ? formatNum(r.defectShort) : '—')}
                     {renderCommentCell(r, 'defectBurst', r.defectBurst ? formatNum(r.defectBurst) : '—')}
                     {renderCommentCell(r, 'defectBottomConvex', r.defectBottomConvex ? formatNum(r.defectBottomConvex) : '—')}
