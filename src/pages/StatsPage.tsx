@@ -1207,6 +1207,160 @@ export default function StatsPage() {
     if (!note || note.trim() === '' || note.trim() === '/' || note.trim() === '／') return typeMap;
     console.log('[parseNote] 开始解析备注:', note);
 
+    // 中文数字解析函数（提取到外部，方便复用）
+    const parseChineseNumber = (s: string): { qty: number; rest: string } | null => {
+      const digits: Record<string, number> = { '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+      
+      // 先尝试匹配"中文数字+量词+不良类型"的格式（如"两颗箔边爆破"）
+      const match1 = s.match(/^([零一二三四五六七八九十]+)\s*(个|颗|粒)\s*(.+)$/);
+      if (match1) {
+        const cnNum = match1[1];
+        let rest = match1[3].trim();
+        // 去掉"的情况"等无用后缀
+        rest = rest.replace(/的情况$/, '').trim();
+        
+        // 转换为数字
+        let qty = 0;
+        if (/^\d+$/.test(cnNum)) { qty = parseInt(cnNum, 10); }
+        else if (cnNum === '十') { qty = 10; }
+        else if (cnNum.startsWith('十') && cnNum.length === 2) { qty = 10 + (digits[cnNum[1]] || 0); }
+        else if (cnNum.endsWith('十') && cnNum.length === 2) { qty = (digits[cnNum[0]] || 0) * 10; }
+        else if (cnNum.includes('十') && cnNum.length > 2) {
+          const parts = cnNum.split('十');
+          qty = (digits[parts[0]] || 0) * 10 + (digits[parts[1]] || 0);
+        }
+        else { qty = digits[cnNum] ?? 0; }
+        
+        if (qty > 0 && rest) return { qty, rest };
+      }
+      
+      // 再尝试匹配"中文数字+不良类型"的格式（如"十五箔面爆破"）
+      const match2 = s.match(/^([零一二三四五六七八九十]+)\s*(.+)$/);
+      if (match2) {
+        const cnNum = match2[1];
+        let rest = match2[2].trim();
+        // 去掉"的情况"等无用后缀
+        rest = rest.replace(/的情况$/, '').trim();
+        
+        // 转换为数字
+        let qty = 0;
+        if (/^\d+$/.test(cnNum)) { qty = parseInt(cnNum, 10); }
+        else if (cnNum === '十') { qty = 10; }
+        else if (cnNum.startsWith('十') && cnNum.length === 2) { qty = 10 + (digits[cnNum[1]] || 0); }
+        else if (cnNum.endsWith('十') && cnNum.length === 2) { qty = (digits[cnNum[0]] || 0) * 10; }
+        else if (cnNum.includes('十') && cnNum.length > 2) {
+          const parts = cnNum.split('十');
+          qty = (digits[parts[0]] || 0) * 10 + (digits[parts[1]] || 0);
+        }
+        else { qty = digits[cnNum] ?? 0; }
+        
+        if (qty > 0 && rest) return { qty, rest };
+      }
+      
+      return null;
+    };
+    
+    // 解析单条备注描述（复用逻辑）
+    const parseDescription = (description: string, totalCount: number, typeMap: Record<string, number>): void => {
+      if (totalCount <= 0) {
+        // totalCount = 0 时，直接解析 description 中的具体数量
+        const items = description.split(/[，,、]/).map(s => s.trim()).filter(s => s.length > 0);
+        for (const item of items) {
+          const cnResult = parseChineseNumber(item);
+          if (cnResult) {
+            typeMap[cnResult.rest] = (typeMap[cnResult.rest] || 0) + cnResult.qty;
+            console.log('[parseNote] totalCount=0，解析到:', cnResult.rest, cnResult.qty);
+            continue;
+          }
+          // 尝试解析 "XXX×数量" 格式
+          const qtySuffixMatch = item.match(/^(.+?)\s*[×xX*](\d+)$/);
+          if (qtySuffixMatch) {
+            const defectType = qtySuffixMatch[1].trim();
+            const qty = parseInt(qtySuffixMatch[2], 10);
+            typeMap[defectType] = (typeMap[defectType] || 0) + qty;
+            console.log('[parseNote] totalCount=0，解析到:', defectType, qty);
+            continue;
+          }
+          // 无数量，默认为1
+          typeMap[item] = (typeMap[item] || 0) + 1;
+          console.log('[parseNote] totalCount=0，无数量，默认为1:', item);
+        }
+        return;
+      }
+      
+      // totalCount > 0 时，按原有逻辑解析
+      // 情况1："均为XXX" 或 "全部XXX" → XXX 获得该类别全部数量
+      if (/^均为/.test(description) || /^全部/.test(description)) {
+        const defectType = description.replace(/^均为|^全部/, '').trim();
+        if (defectType) {
+          typeMap[defectType] = (typeMap[defectType] || 0) + totalCount;
+        }
+        return;
+      }
+      
+      // 情况2：按逗号分割，逐项解析数量和不良类型
+      const items = description.split(/[，,、]/).map(s => s.trim()).filter(s => s.length > 0);
+      if (items.length === 0) return;
+      
+      const parsedItems: { defectType: string; qty: number }[] = [];
+      let hasExplicitQty = false;
+      
+      for (const item of items) {
+        // 格式A："XXX×2" 或 "XXX*2"
+        const qtySuffixMatch = item.match(/^(.+?)\s*[×xX*](\d+)$/);
+        if (qtySuffixMatch) {
+          parsedItems.push({ defectType: qtySuffixMatch[1].trim(), qty: parseInt(qtySuffixMatch[2], 10) });
+          hasExplicitQty = true;
+          continue;
+        }
+        // 格式B："2个XXX"、"两颗XXX"、"一个XXX"
+        const qtyMatch = item.match(/^(\d+)\s*(?:个|颗|粒)/);
+        if (qtyMatch) {
+          const qty = parseInt(qtyMatch[1], 10);
+          const rest = item.replace(/^\d+\s*(?:个|颗|粒)/, '').trim();
+          if (rest) parsedItems.push({ defectType: rest, qty });
+          hasExplicitQty = true;
+          continue;
+        }
+        // 格式C：中文数字
+        const cnResult = parseChineseNumber(item);
+        if (cnResult) {
+          parsedItems.push({ defectType: cnResult.rest, qty: cnResult.qty });
+          hasExplicitQty = true;
+          continue;
+        }
+        // 只有"个/颗"前缀但无数字：默认1
+        if (/^(?:个|颗|粒)/.test(item)) {
+          const rest = item.replace(/^(?:个|颗|粒)/, '').trim();
+          if (rest) parsedItems.push({ defectType: rest, qty: 1 });
+          continue;
+        }
+        // 格式D：只有不良类型名称（无数量）
+        parsedItems.push({ defectType: item, qty: 0 });
+      }
+      
+      if (hasExplicitQty) {
+        for (const { defectType, qty } of parsedItems) {
+          const actualQty = qty > 0 ? qty : 1;
+          typeMap[defectType] = (typeMap[defectType] || 0) + actualQty;
+        }
+      } else {
+        // 无明确数量，按 totalCount 平均分配
+        const noQtyItems = parsedItems.filter(p => p.qty === 0);
+        if (noQtyItems.length > 0) {
+          const base = Math.floor(totalCount / noQtyItems.length);
+          const extra = totalCount % noQtyItems.length;
+          for (let i = 0; i < noQtyItems.length; i++) {
+            const { defectType } = noQtyItems[i];
+            const qty = i === 0 ? base + extra : base;
+            if (qty > 0) {
+              typeMap[defectType] = (typeMap[defectType] || 0) + qty;
+            }
+          }
+        }
+      }
+    };
+    
     // 各通用类别的不良数量
     const categoryCounts: Record<string, number> = {
       '短路': record.defectShort,
@@ -1234,17 +1388,24 @@ export default function StatsPage() {
         console.log('[parseNote] 无冒号，直接解析:', trimmedPart);
         const items = trimmedPart.split(/[，,、]/).map(s => s.trim()).filter(s => s.length > 0);
         for (const item of items) {
+          // 尝试解析中文数字
+          const cnResult = parseChineseNumber(item);
+          if (cnResult) {
+            typeMap[cnResult.rest] = (typeMap[cnResult.rest] || 0) + cnResult.qty;
+            console.log('[parseNote] 无冒号，中文数字解析成功:', cnResult.rest, cnResult.qty);
+            continue;
+          }
           // 尝试解析 "XXX×数量" 格式
           const qtyMatch = item.match(/^(.+?)\s*[×xX*](\d+)$/);
           if (qtyMatch) {
             const defectType = qtyMatch[1].trim();
             const qty = parseInt(qtyMatch[2], 10);
             typeMap[defectType] = (typeMap[defectType] || 0) + qty;
-            console.log('[parseNote] 直接解析成功:', defectType, '×', qty);
+            console.log('[parseNote] 无冒号，直接解析成功:', defectType, '×', qty);
           } else {
             // 无数量，默认为1
             typeMap[item] = (typeMap[item] || 0) + 1;
-            console.log('[parseNote] 无数量，默认为1:', item);
+            console.log('[parseNote] 无冒号，无数量，默认为1:', item);
           }
         }
         continue;
@@ -1255,107 +1416,13 @@ export default function StatsPage() {
       const totalCount = categoryCounts[category];
       if (!totalCount || totalCount <= 0) {
         console.warn('[parseNote] 类别无数量或不存在:', category, totalCount);
+        // 继续解析 description 中的不良类型（数量来自备注本身）
+        parseDescription(description, 0, typeMap);
         continue;
       }
-
-      // 情况1："均为XXX" 或 "全部XXX" → XXX 获得该类别全部数量
-      if (/^均为/.test(description) || /^全部/.test(description)) {
-        const defectType = description.replace(/^均为|^全部/, '').trim();
-        if (defectType) {
-          typeMap[defectType] = (typeMap[defectType] || 0) + totalCount;
-        }
-        continue;
-      }
-
-      // 情况2：按逗号分割，逐项解析数量和不良类型
-      // 支持格式："2个箔边爆破，1个箔面爆破"、"两颗箔边爆破，一颗箔面爆破"、"箔边爆破×2，箔面爆破×1"
-      const items = description.split(/[，,、]/).map(s => s.trim()).filter(s => s.length > 0);
-      if (items.length === 0) continue;
-
-      const parsedItems: { defectType: string; qty: number }[] = [];
-      let hasExplicitQty = false;
-
-      for (const item of items) {
-        // 格式A："XXX×2" 或 "XXX*2"
-        const qtySuffixMatch = item.match(/^(.+?)\s*[×xX*](\d+)$/);
-        if (qtySuffixMatch) {
-          parsedItems.push({ defectType: qtySuffixMatch[1].trim(), qty: parseInt(qtySuffixMatch[2], 10) });
-          hasExplicitQty = true;
-          continue;
-        }
-        // 格式B："2个XXX"、"两颗XXX"、"一个XXX"
-        const qtyMatch = item.match(/^(\d+)\s*(?:个|颗|粒)/);
-        if (qtyMatch) {
-          const qty = parseInt(qtyMatch[1], 10);
-          const rest = item.replace(/^\d+\s*(?:个|颗|粒)/, '').trim();
-          if (rest) parsedItems.push({ defectType: rest, qty });
-          hasExplicitQty = true;
-          continue;
-        }
-        // 中文数字："两个XXX"、"三颗XXX"、"十五颗XXX"
-        // 解析中文数字（支持个位、整十、十几、几十几等）
-        const parseChineseNumber = (s: string): { qty: number; rest: string } | null => {
-          const digits: Record<string, number> = { '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
-          // 匹配：中文数字 + 可选量词(个/颗/粒) + 不良类型
-          const match = s.match(/^([零一二三四五六七八九十]+)\s*(?:个|颗|粒)?\s*(.*)$/);
-          if (!match) return null;
-          const cnNum = match[1];
-          let rest = match[2].trim(); // 去掉量词后的剩余部分
-          
-          // 去掉"的情况"、"的情况"等无用后缀
-          rest = rest.replace(/的情况$/, '').trim();
-
-          // 转换为数字
-          let qty = 0;
-          if (/^\d+$/.test(cnNum)) { qty = parseInt(cnNum, 10); } // 已经是阿拉伯数字
-          else if (cnNum === '十') { qty = 10; }
-          else if (cnNum.startsWith('十') && cnNum.length === 2) { qty = 10 + (digits[cnNum[1]] || 0); } // 十几
-          else if (cnNum.endsWith('十') && cnNum.length === 2) { qty = (digits[cnNum[0]] || 0) * 10; } // 几十
-          else if (cnNum.includes('十') && cnNum.length > 2) { // 几十几，如二十三
-            const parts = cnNum.split('十');
-            qty = (digits[parts[0]] || 0) * 10 + (digits[parts[1]] || 0);
-          }
-          else { qty = digits[cnNum] ?? 0; }
-          
-          if (qty > 0 && rest) return { qty, rest };
-          return null;
-        };
-        const cnResult = parseChineseNumber(item);
-        if (cnResult) {
-          parsedItems.push({ defectType: cnResult.rest, qty: cnResult.qty });
-          hasExplicitQty = true;
-          continue;
-        }
-        // 只有"个/颗"前缀但无数字：默认1
-        if (/^(?:个|颗|粒)/.test(item)) {
-          const rest = item.replace(/^(?:个|颗|粒)/, '').trim();
-          if (rest) parsedItems.push({ defectType: rest, qty: 1 });
-          continue;
-        }
-        // 格式C：只有不良类型名称（无数量）
-        parsedItems.push({ defectType: item, qty: 0 });
-      }
-
-      if (hasExplicitQty) {
-        for (const { defectType, qty } of parsedItems) {
-          const actualQty = qty > 0 ? qty : 1;
-          typeMap[defectType] = (typeMap[defectType] || 0) + actualQty;
-        }
-      } else {
-        // 无明确数量，按 totalCount 平均分配
-        const noQtyItems = parsedItems.filter(p => p.qty === 0);
-        if (noQtyItems.length > 0) {
-          const base = Math.floor(totalCount / noQtyItems.length);
-          const extra = totalCount % noQtyItems.length;
-          for (let i = 0; i < noQtyItems.length; i++) {
-            const { defectType } = noQtyItems[i];
-            const qty = i === 0 ? base + extra : base;
-            if (qty > 0) {
-              typeMap[defectType] = (typeMap[defectType] || 0) + qty;
-            }
-          }
-        }
-      }
+      
+      // 解析描述
+      parseDescription(description, totalCount, typeMap);
     }
     console.log('[parseNote] 解析结果:', note, typeMap);
     return typeMap;
