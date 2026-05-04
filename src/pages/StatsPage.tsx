@@ -1014,7 +1014,6 @@ export default function StatsPage() {
 
           // 找到或创建同名 sheet（覆盖模式）
           let localSheet = localSheets.find((s) => s.name === sheetName);
-          let sheetExists = !!localSheet;
 
           if (!localSheet) {
             // 先检查数据库中是否已存在同名 sheet（其他用户创建的）
@@ -1027,7 +1026,6 @@ export default function StatsPage() {
             if (existingSheet) {
               // 复用已存在的 sheet
               localSheet = { id: existingSheet.id, name: existingSheet.name };
-              sheetExists = true;
               // 如果本地没有，添加到本地状态
               if (!localSheets.find((s) => s.id === localSheet!.id)) {
                 setLocalSheets((prev) => [...prev, localSheet!]);
@@ -1207,6 +1205,7 @@ export default function StatsPage() {
   const parseNoteForDefectTypes = (note: string, record: ProductionRecord): Record<string, number> => {
     const typeMap: Record<string, number> = {};
     if (!note || note.trim() === '' || note.trim() === '/' || note.trim() === '／') return typeMap;
+    console.log('[parseNote] 开始解析备注:', note);
 
     // 各通用类别的不良数量
     const categoryCounts: Record<string, number> = {
@@ -1226,12 +1225,38 @@ export default function StatsPage() {
     for (const part of parts) {
       const trimmedPart = part.trim();
       if (!trimmedPart) continue;
+      
+      // 先尝试匹配 "类别：描述" 格式
       const colonMatch = trimmedPart.match(/^(.+?)\s*[：:]】?\s*(.+)$/);
-      if (!colonMatch) continue;
+      
+      if (!colonMatch) {
+        // 无冒号：直接解析为不良类型列表（如 "箔边爆破×5，箔面爆破×3"）
+        console.log('[parseNote] 无冒号，直接解析:', trimmedPart);
+        const items = trimmedPart.split(/[，,、]/).map(s => s.trim()).filter(s => s.length > 0);
+        for (const item of items) {
+          // 尝试解析 "XXX×数量" 格式
+          const qtyMatch = item.match(/^(.+?)\s*[×xX*](\d+)$/);
+          if (qtyMatch) {
+            const defectType = qtyMatch[1].trim();
+            const qty = parseInt(qtyMatch[2], 10);
+            typeMap[defectType] = (typeMap[defectType] || 0) + qty;
+            console.log('[parseNote] 直接解析成功:', defectType, '×', qty);
+          } else {
+            // 无数量，默认为1
+            typeMap[item] = (typeMap[item] || 0) + 1;
+            console.log('[parseNote] 无数量，默认为1:', item);
+          }
+        }
+        continue;
+      }
+      
       const category = colonMatch[1].trim();
       const description = colonMatch[2].trim();
       const totalCount = categoryCounts[category];
-      if (!totalCount || totalCount <= 0) continue;
+      if (!totalCount || totalCount <= 0) {
+        console.warn('[parseNote] 类别无数量或不存在:', category, totalCount);
+        continue;
+      }
 
       // 情况1："均为XXX" 或 "全部XXX" → XXX 获得该类别全部数量
       if (/^均为/.test(description) || /^全部/.test(description)) {
