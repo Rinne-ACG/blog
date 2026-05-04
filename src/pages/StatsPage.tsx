@@ -514,35 +514,6 @@ export default function StatsPage() {
     return Number(val).toFixed(2);
   };
 
-  const COL_WIDTHS = [
-    100,
-    50,
-    120,
-    80,
-    80,
-    120,
-    80,
-    100,
-    110,
-    90,
-    90,
-    80,
-    100,
-    90,
-    80,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    60,
-    80,
-    130,
-    100,
-    70
-  ];
   /* ── 搜索过滤 + 列筛选 ── */
   const getCellValue = (r: ProductionRecord, field: SortField): string | number => {
     const fieldMap: Record<string, keyof ProductionRecord> = {
