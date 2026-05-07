@@ -29,6 +29,7 @@ export default function Navbar() {
     { to: '/gallery', label: '图片' },
     { to: '/stats', label: '生产统计' },
     { to: '/bolt-stats', label: '螺栓统计' },
+    { to: '/image-to-excel', label: '图片转Excel' },
     { to: '/tags', label: '标签' },
     { to: '/about', label: '关于' },
   ];

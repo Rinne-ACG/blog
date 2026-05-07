@@ -11,6 +11,7 @@ import GalleryPage from './pages/GalleryPage';
 import StatsPage from './pages/StatsPage';
 import BoltStatsPage from './pages/BoltStatsPage';
 import LoginPage from './pages/LoginPage';
+import ImageToExcelPage from './pages/ImageToExcelPage';
 
 /* ═══════════════════════════════════════════════════
    路由守卫：未登录 → 踢到 /login
@@ -78,6 +79,14 @@ export default function App() {
               element={
                 <AuthGuard>
                   <GalleryPage />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/image-to-excel"
+              element={
+                <AuthGuard>
+                  <ImageToExcelPage />
                 </AuthGuard>
               }
             />
