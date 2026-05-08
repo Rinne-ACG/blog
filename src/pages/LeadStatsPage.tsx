@@ -35,10 +35,9 @@ const calcDerived = (f: ProductionRecord): ProductionRecord => {
 const emptyRecord = (): ProductionRecord => ({
   id: generateUUID(),
   entryDate: new Date().toISOString().slice(0, 10),
-  seq: '', materialCode: '', spec: '', size: '', workOrderNo: '',
+  cycle: '', batchNo: '', seq: '', materialCode: '', spec: '', size: '', workOrderNo: '',
   positiveFoilVoltage: '', designQty: 0, actualQty: 0, windingQty: 0,
   goodQty: 0, loss: 0, firstBottomConvexShortBurstRate: 0, firstPassRate: 0,
-  batchYieldRate: undefined,
   defectShort: 0, defectBurst: 0, defectBottomConvex: 0,
   defectVoltage: 0, defectAppearance: 0, defectLeakage: 0,
   defectHighCap: 0, defectLowCap: 0, defectDF: 0,
@@ -50,6 +49,12 @@ interface LocalSheet {
   id: string;       // cloud sheet id
   name: string;
 }
+
+/* ─── 全年表常量 ─── */
+const ANNUAL_PREFIX = '📊 全年表 ';
+const getCurrentYear = () => new Date().getFullYear().toString();
+const getAnnualSheetName = () => `${ANNUAL_PREFIX}${getCurrentYear()}`;
+const isAnnualSheet = (sheet: LocalSheet) => sheet.name.startsWith(ANNUAL_PREFIX);
 
 /* ═══════════════════════════════════════════════════
    Excel 原生批注解析
@@ -169,7 +174,8 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
   // 字段名到列索引的映射（用于批注关联）
   const fieldToColIdx: Record<string, number> = {
     entryDate: headerColIndexMap['录入日期'] ?? -1,
-    seq: headerColIndexMap['序号'] ?? -1,
+    cycle: headerColIndexMap['周期'] ?? -1,
+    batchNo: headerColIndexMap['批号'] ?? -1,
     materialCode: headerColIndexMap['物料代码'] ?? -1,
     spec: headerColIndexMap['规格'] ?? -1,
     size: headerColIndexMap['尺寸'] ?? -1,
@@ -182,7 +188,6 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
     loss: headerColIndexMap['损耗'] ?? -1,
     firstBottomConvexShortBurstRate: headerColIndexMap['一次底凸、短路、爆破率'] ?? headerColIndexMap['一次底凸短路爆破率'] ?? -1,
     firstPassRate: headerColIndexMap['一次\n直通率'] ?? headerColIndexMap['一次直通率'] ?? -1,
-    batchYieldRate: headerColIndexMap['整批良率'] ?? -1,
     defectShort: headerColIndexMap['短路'] ?? -1,
     defectBurst: headerColIndexMap['爆破'] ?? -1,
     defectBottomConvex: headerColIndexMap['底凸'] ?? -1,
@@ -226,7 +231,9 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
     const base: ProductionRecord = {
       id: generateUUID(),
       entryDate,
-      seq: strFn(g(['序号', 'seq'])),
+      cycle: strFn(g(['周期', 'cycle'])),
+      batchNo: strFn(g(['批号', 'batchNo'])),
+      seq: '',
       materialCode: strFn(g(['物料代码', 'materialCode'])),
       spec: strFn(g(['规格', 'spec'])),
       size: strFn(g(['尺寸', 'size'])),
@@ -239,10 +246,6 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
       loss: 0,
       firstBottomConvexShortBurstRate: 0,
       firstPassRate: 0,
-      batchYieldRate: (() => {
-        const raw = g(['整批良率', 'batchYieldRate']);
-        return raw !== undefined && raw !== null && raw !== '' ? numFn(raw) : undefined;
-      })(),
       defectShort: numFn(g(['短路', 'defectShort'])),
       defectBurst: numFn(g(['爆破', 'defectBurst'])),
       defectBottomConvex: numFn(g(['底凸', 'defectBottomConvex'])),
@@ -291,7 +294,8 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
 /* ─── Excel 导出列定义 ─── */
 const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: number }[] = [
   { key: 'entryDate', label: '录入日期', width: 12 },
-  { key: 'seq', label: '序号', width: 8 },
+  { key: 'cycle', label: '周期', width: 12 },
+  { key: 'batchNo', label: '批号', width: 14 },
   { key: 'materialCode', label: '物料代码', width: 20 },
   { key: 'spec', label: '规格', width: 18 },
   { key: 'size', label: '尺寸', width: 12 },
@@ -304,7 +308,6 @@ const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: numbe
   { key: 'loss', label: '损耗(%)', width: 10 },
   { key: 'firstBottomConvexShortBurstRate', label: '一次底凸短路爆破率(%)', width: 20 },
   { key: 'firstPassRate', label: '一次直通率(%)', width: 14 },
-  { key: 'batchYieldRate', label: '整批良率(%)', width: 12 },
   { key: 'defectShort', label: '短路', width: 8 },
   { key: 'defectBurst', label: '爆破', width: 8 },
   { key: 'defectBottomConvex', label: '底凸', width: 8 },
@@ -320,11 +323,11 @@ const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: numbe
 ];
 // 批注字段映射（用于导出的列名）
 const COMMENT_FIELD_LABELS: Record<string, string> = {
-  entryDate: '录入日期', seq: '序号', materialCode: '物料代码', spec: '规格',
+  entryDate: '录入日期', cycle: '周期', batchNo: '批号', materialCode: '物料代码', spec: '规格',
   size: '尺寸', workOrderNo: '流转单号', positiveFoilVoltage: '正箔电压',
   designQty: '设计数量', actualQty: '实际此单总数', windingQty: '卷绕数',
   goodQty: '良品数', loss: '损耗', firstBottomConvexShortBurstRate: '一次底凸短路爆破率',
-  firstPassRate: '一次直通率', batchYieldRate: '整批良率',
+  firstPassRate: '一次直通率',
   defectShort: '短路', defectBurst: '爆破', defectBottomConvex: '底凸',
   defectVoltage: '耐压', defectAppearance: '外观', defectLeakage: '漏电',
   defectHighCap: '高容', defectLowCap: '低容', defectDF: 'DF',
@@ -462,7 +465,7 @@ function FilterDropdown({
   );
 }
 
-export default function StatsPage() {
+export default function LeadStatsPage() {
   const navigate = useNavigate();
 
   /* ── Sheet 列表（本地缓存）── */
@@ -498,12 +501,40 @@ export default function StatsPage() {
   const [renamingSheet, setRenamingSheet] = useState<LocalSheet | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
+  /* ── 全年表状态 ── */
+  const [isAnnualView, setIsAnnualView] = useState(false);  // 当前是否为全年表视图
+  const [allSheetsRecords, setAllSheetsRecords] = useState<ProductionRecord[]>([]);  // 所有工作表的全部记录
+
+  /* ── 全年表日期范围筛选 ── */
+  const [dateRangeStart, setDateRangeStart] = useState('');  // 筛选开始日期（格式 YYYY-MM-DD）
+  const [dateRangeEnd, setDateRangeEnd] = useState('');      // 筛选结束日期（格式 YYYY-MM-DD）
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ── 工具 ── */
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(''), 2500);
+  };
+
+  // 兼容多种日期输入格式，转换为 YYYY-MM-DD
+  // 支持: 2026.5.3 / 2026-5-3 / 2026/5/3 / 2026年5月3日 / 2026-05-03
+  const normalizeDate = (input: string): string => {
+    if (!input) return '';
+    // 已经是标准格式
+    if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+    let m: RegExpMatchArray | null;
+    // 2026.5.3 / 2026.05.03 / 2026-5-3 / 2026/5/3
+    if ((m = input.match(/^(\d{1,4})[./-](\d{1,2})[./-](\d{1,2})$/))) {
+      const [, y, mo, d] = m;
+      return `${y.padStart(4, '20')}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    // 2026年5月3日
+    if ((m = input.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?$/))) {
+      const [, y, mo, d] = m;
+      return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    return input; // 无法识别则原样返回
   };
 
   /* ── 当前 Sheet 信息 ── */
@@ -519,11 +550,11 @@ export default function StatsPage() {
   /* ── 搜索过滤 + 列筛选 ── */
   const getCellValue = (r: ProductionRecord, field: SortField): string | number => {
     const fieldMap: Record<string, keyof ProductionRecord> = {
-      entryDate: 'entryDate', seq: 'seq', materialCode: 'materialCode', spec: 'spec',
+      entryDate: 'entryDate', cycle: 'cycle', batchNo: 'batchNo', materialCode: 'materialCode', spec: 'spec',
       size: 'size', workOrderNo: 'workOrderNo', positiveFoilVoltage: 'positiveFoilVoltage',
       designQty: 'designQty', actualQty: 'actualQty', windingQty: 'windingQty',
       goodQty: 'goodQty', loss: 'loss', firstBottomConvexShortBurstRate: 'firstBottomConvexShortBurstRate',
-      firstPassRate: 'firstPassRate', batchYieldRate: 'batchYieldRate',
+      firstPassRate: 'firstPassRate',
       defectShort: 'defectShort', defectBurst: 'defectBurst', defectBottomConvex: 'defectBottomConvex',
       defectVoltage: 'defectVoltage', defectAppearance: 'defectAppearance',
       defectLeakage: 'defectLeakage', defectHighCap: 'defectHighCap', defectLowCap: 'defectLowCap',
@@ -531,11 +562,6 @@ export default function StatsPage() {
     };
     const key = fieldMap[field] ?? field;
     const val = r[key as keyof ProductionRecord];
-    // 序号列按数字排序
-    if (field === 'seq') {
-      const na = Number(String(val).replace(/\D/g, ''));
-      return isNaN(na) ? String(val) : na;
-    }
     // 确保返回 string | number 类型（排除 comments 等复杂对象）
     if (typeof val === 'string' || typeof val === 'number') {
       return val;
@@ -545,18 +571,33 @@ export default function StatsPage() {
 
   const filtered = sheetRecords
     .filter((r) => {
-      // 关键字搜索
-      const q = searchQuery.trim().toLowerCase();
-      const matchSearch = !q || (
-        r.entryDate.includes(q) || r.materialCode.toLowerCase().includes(q) ||
-        r.workOrderNo.toLowerCase().includes(q) || r.spec.toLowerCase().includes(q) ||
-        r.operator.toLowerCase().includes(q)
-      );
-      // 列筛选：selected 表示被选中的值，selected.size === 0 表示显示全部
+      // ── 1. 日期范围筛选（仅全年表视图生效）───────────────────
+      if (isAnnualView) {
+        const recordDate = r.entryDate;
+        if (dateRangeStart && recordDate < dateRangeStart) return false;
+        if (dateRangeEnd && recordDate > dateRangeEnd) return false;
+      }
+      // ── 2. 关键字搜索（空格分隔多词，AND 匹配）───────────────
+      const q = searchQuery.trim();
+      const matchSearch = !q || q.split(/\s+/).every((term) => {
+        const t = term.toLowerCase();
+        return (
+          r.entryDate.toLowerCase().includes(t) ||
+          (r.cycle ?? '').toLowerCase().includes(t) ||
+          (r.batchNo ?? '').toLowerCase().includes(t) ||
+          r.materialCode.toLowerCase().includes(t) ||
+          r.spec.toLowerCase().includes(t) ||
+          r.size.toLowerCase().includes(t) ||
+          r.workOrderNo.toLowerCase().includes(t) ||
+          r.positiveFoilVoltage.toLowerCase().includes(t) ||
+          r.operator.toLowerCase().includes(t)
+        );
+      });
+      // ── 3. 列筛选：selected 表示被选中的值，selected.size === 0 表示显示全部
       const matchFilters = Object.entries(filterValues).every(([col, selected]) => {
-        if (selected.size === 0) return true;  // 没有选中任何值，显示全部
+        if (selected.size === 0) return true;
         const val = String(getCellValue(r, col as SortField));
-        return selected.has(val);  // 只显示被勾选的值
+        return selected.has(val);
       });
       return matchSearch && matchFilters;
     })
@@ -580,14 +621,10 @@ export default function StatsPage() {
       filtered.reduce((s, r) => s + r.defectShort + r.defectBurst + r.defectBottomConvex, 0) / totalWinding * 100
     ) : 0;
     const firstPassRate = totalActual > 0 ? round4(totalGood / totalActual * 100) : 0;
-    const batchYieldValues = filtered.map(r => r.batchYieldRate).filter((v): v is number => v !== undefined && v !== null);
-    const batchYieldRate = batchYieldValues.length > 0
-      ? round4(batchYieldValues.reduce((a, b) => a + b, 0) / batchYieldValues.length)
-      : undefined;
     const sum = (key: keyof ProductionRecord) => filtered.reduce((s, r) => s + ((r[key] as number) ?? 0), 0);
     return {
       totalDesign, totalActual, totalWinding, totalGood,
-      lossRate, firstBSBRate, firstPassRate, batchYieldRate,
+      lossRate, firstBSBRate, firstPassRate,
       defectShort:      sum('defectShort'),
       defectBurst:      sum('defectBurst'),
       defectBottomConvex: sum('defectBottomConvex'),
@@ -651,7 +688,7 @@ export default function StatsPage() {
 
     // 保存到数据库
     await supabase
-      .from('records')
+      .from('lead_records')
       .update({ comments: Object.keys(updatedComments).length > 0 ? updatedComments : null })
       .eq('id', commentTarget.recordId);
 
@@ -675,7 +712,7 @@ export default function StatsPage() {
     const hasComment = r.comments && r.comments[field];
     return (
       <td
-        className={`relative px-2 py-1.5 text-center cursor-pointer hover:bg-yellow-50/50 transition-colors border border-gray-200 ${extraClass}`}
+        className={`relative px-2 py-1.5 text-center cursor-pointer hover:bg-yellow-50/50 transition-colors border border-gray-100 ${extraClass}`}
         onDoubleClick={() => openCommentEditor(r.id, field, r.comments?.[field] || '')}
         onMouseEnter={(e) => {
           if (hasComment) {
@@ -723,7 +760,7 @@ export default function StatsPage() {
 
       try {
         const { data: cloudSheets, error } = await supabase
-          .from('sheets')
+          .from('lead_sheets')
           .select('id, name, "order"')
           .order('created_at', { ascending: true });
 
@@ -731,29 +768,79 @@ export default function StatsPage() {
         if (error) throw error;
 
         if (!cloudSheets || cloudSheets.length === 0) {
-          // 首次使用，创建默认 Sheet
-          const { data: newSheet, error: insertError } = await supabase
-            .from('sheets')
-            .insert({ name: '工作表1', 'order': [], user_id: user.id })
+          // 首次使用，创建默认 Sheet 和全年表
+          const annualName = getAnnualSheetName();
+          await supabase
+            .from('lead_sheets')
+            .insert({ name: '工作表1', 'order': [], user_id: user.id });
+          // 同时创建全年表
+          await supabase.from('lead_sheets').insert({ name: annualName, 'order': [], user_id: user.id });
+          // 重新获取所有 sheets
+          const { data: allSheets } = await supabase
+            .from('lead_sheets')
             .select('id, name, "order"')
-            .single();
-          if (ignore) return;
-          if (insertError) throw insertError;
-          if (newSheet) {
-            setLocalSheets([{ id: newSheet.id, name: newSheet.name }]);
-            setActiveSheetId(newSheet.id);
-            setSheetRecords([]);
-            setLoading(false); // 没有记录需要加载，直接关闭 loading
+            .order('created_at', { ascending: true });
+          if (allSheets) {
+            const mapped: LocalSheet[] = allSheets.map((s: any) => ({ id: s.id, name: s.name }));
+            // 全年表置顶
+            const annualIdx = mapped.findIndex(s => isAnnualSheet(s));
+            if (annualIdx > 0) {
+              const [annual] = mapped.splice(annualIdx, 1);
+              mapped.unshift(annual);
+            }
+            setLocalSheets(mapped);
+            // 全年表作为默认激活
+            if (isAnnualSheet(mapped[0])) {
+              setActiveSheetId(mapped[0].id);
+              const allRecs = await loadAllRecords();
+              const year = getCurrentYear();
+              setSheetRecords(allRecs.filter(r => r.entryDate.startsWith(year)));
+              setIsAnnualView(true);
+            } else {
+              setActiveSheetId(mapped[0].id);
+              setIsAnnualView(false);
+              await loadRecords(mapped[0].id);
+            }
           }
+          setLoading(false);
         } else {
-          const mapped: LocalSheet[] = cloudSheets.map((s) => ({
-            id: s.id,
-            name: s.name,
-          }));
+          // 检查并创建全年表
+          const annualName = getAnnualSheetName();
+          const hasAnnual = cloudSheets.some((s: any) => s.name.startsWith(ANNUAL_PREFIX));
+          if (!hasAnnual) {
+            await supabase.from('lead_sheets').insert({ name: annualName, 'order': [], user_id: user.id });
+          }
+          // 重新获取 sheets（包含新创建的全年表）
+          const { data: refreshedSheets } = await supabase
+            .from('lead_sheets')
+            .select('id, name, "order"')
+            .order('created_at', { ascending: true });
+          if (ignore || !refreshedSheets) return;
+
+          // 预加载所有记录
+          const allRecs = await loadAllRecords();
+
+          const mapped: LocalSheet[] = refreshedSheets.map((s: any) => ({ id: s.id, name: s.name }));
+          // 全年表置顶
+          const annualIdx = mapped.findIndex(s => isAnnualSheet(s));
+          if (annualIdx > 0) {
+            const [annual] = mapped.splice(annualIdx, 1);
+            mapped.unshift(annual);
+          }
           setLocalSheets(mapped);
-          setActiveSheetId(mapped[0].id);
-          // loadRecords 内部会处理 loading 状态
-          await loadRecords(mapped[0].id);
+
+          // 全年表视图特殊处理
+          if (isAnnualSheet(mapped[0])) {
+            setActiveSheetId(mapped[0].id);
+            const year = getCurrentYear();
+            setSheetRecords(allRecs.filter(r => r.entryDate.startsWith(year)));
+            setIsAnnualView(true);
+          } else {
+            setActiveSheetId(mapped[0].id);
+            setIsAnnualView(false);
+            await loadRecords(mapped[0].id);
+          }
+          setLoading(false);
         }
       } catch (err) {
         console.error('初始化失败:', err);
@@ -771,7 +858,7 @@ export default function StatsPage() {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('records')
+        .from('lead_records')
         .select('*')
         .eq('sheet_id', sheetId)
         .order('entry_date', { ascending: false });
@@ -784,6 +871,8 @@ export default function StatsPage() {
         (data ?? []).map((r) => ({
           id: r.id,
           entryDate: r.entry_date ?? '',
+          cycle: r.cycle ?? '',
+          batchNo: r.batch_no ?? '',
           seq: r.seq ?? '',
           materialCode: r.material_code ?? '',
           spec: r.spec ?? '',
@@ -797,7 +886,6 @@ export default function StatsPage() {
           loss: Number(r.loss) || 0,
           firstBottomConvexShortBurstRate: Number(r.first_bottom_convex_short_burst_rate) || 0,
           firstPassRate: Number(r.first_pass_rate) || 0,
-          batchYieldRate: Number(r.batch_yield_rate) || 0,
           defectShort: r.defect_short ?? 0,
           defectBurst: r.defect_burst ?? 0,
           defectBottomConvex: r.defect_bottom_convex ?? 0,
@@ -828,13 +916,68 @@ export default function StatsPage() {
     }
   };
 
+  /* ── 加载所有工作表的全部记录（用于全年表汇总）── */
+  const loadAllRecords = async () => {
+    const { data } = await supabase
+      .from('lead_records')
+      .select('*')
+      .order('entry_date', { ascending: false });
+    const mapped = (data ?? []).map((r: any) => ({
+      id: r.id,
+      entryDate: r.entry_date ?? '',
+      cycle: r.cycle ?? '',
+      batchNo: r.batch_no ?? '',
+      seq: r.seq ?? '',
+      materialCode: r.material_code ?? '',
+      spec: r.spec ?? '',
+      size: r.size ?? '',
+      workOrderNo: r.work_order_no ?? '',
+      positiveFoilVoltage: r.positive_foil_voltage ?? '',
+      designQty: r.design_qty ?? 0,
+      actualQty: r.actual_qty ?? 0,
+      windingQty: r.winding_qty ?? 0,
+      goodQty: r.good_qty ?? 0,
+      loss: Number(r.loss) || 0,
+      firstBottomConvexShortBurstRate: Number(r.first_bottom_convex_short_burst_rate) || 0,
+      firstPassRate: Number(r.first_pass_rate) || 0,
+      defectShort: r.defect_short ?? 0,
+      defectBurst: r.defect_burst ?? 0,
+      defectBottomConvex: r.defect_bottom_convex ?? 0,
+      defectVoltage: r.defect_voltage ?? 0,
+      defectAppearance: r.defect_appearance ?? 0,
+      defectLeakage: r.defect_leakage ?? 0,
+      defectHighCap: r.defect_high_cap ?? 0,
+      defectLowCap: r.defect_low_cap ?? 0,
+      defectDF: r.defect_df ?? 0,
+      operator: r.operator ?? '',
+      notes: r.notes ?? '',
+      reworkOrderNo: r.rework_order_no ?? '',
+      comments: r.comments as Record<string, string> | undefined,
+    }));
+    setAllSheetsRecords(mapped);
+    return mapped;
+  };
+
   /* ── Sheet 切换 ── */
   const switchSheet = async (sheet: LocalSheet) => {
-    if (sheet.id === activeSheetId) return; // 已经是当前 sheet，不重复加载
+    if (sheet.id === activeSheetId) return;
     setActiveSheetId(sheet.id);
     setSearchQuery('');
-    setSheetRecords([]); // 先清空当前记录，避免显示旧数据
-    await loadRecords(sheet.id);
+    setDateRangeStart('');
+    setDateRangeEnd('');
+    setSheetRecords([]);
+
+    if (isAnnualSheet(sheet)) {
+      const allRecs = await loadAllRecords();
+      const year = getCurrentYear();
+      setSheetRecords(allRecs.filter(r => r.entryDate.startsWith(year)));
+      setIsAnnualView(true);
+    } else {
+      setIsAnnualView(false);
+      await loadRecords(sheet.id);
+      // 非全年表切换时也刷新全年表数据
+      await loadAllRecords();
+    }
   };
 
   /* ── 新建 Sheet ── */
@@ -846,7 +989,7 @@ export default function StatsPage() {
     while (localSheets.find((s) => s.name === name)) { n++; name = `工作表${n}`; }
 
     const { data: newSheet } = await supabase
-      .from('sheets')
+      .from('lead_sheets')
       .insert({ name, 'order': [], user_id: user.id })
       .select('id, name')
       .single();
@@ -868,12 +1011,13 @@ export default function StatsPage() {
   /* ── 确认重命名 ── */
   const confirmRename = async () => {
     if (!renamingSheet) return;
+    if (isAnnualSheet(renamingSheet)) { setRenamingSheet(null); alert('全年表不能重命名'); return; }
     const newName = renameValue.trim();
     if (!newName || newName === renamingSheet.name) { setRenamingSheet(null); return; }
     if (localSheets.find((s) => s.name === newName && s.id !== renamingSheet.id)) {
       alert('该名称已存在'); return;
     }
-    await supabase.from('sheets').update({ name: newName }).eq('id', renamingSheet.id);
+    await supabase.from('lead_sheets').update({ name: newName }).eq('id', renamingSheet.id);
     setLocalSheets((prev) =>
       prev.map((s) => s.id === renamingSheet.id ? { ...s, name: newName } : s)
     );
@@ -882,28 +1026,31 @@ export default function StatsPage() {
 
   /* ── 删除 Sheet ── */
   const deleteSheet = async (sheet: LocalSheet) => {
+    if (isAnnualSheet(sheet)) { alert('全年表不能删除'); return; }
     if (localSheets.length === 1) { alert('至少保留一个工作表'); return; }
     if (!confirm(`确认删除工作表「${sheet.name}」及其所有数据？`)) return;
-    await supabase.from('sheets').delete().eq('id', sheet.id);
+    await supabase.from('lead_sheets').delete().eq('id', sheet.id);
     const remaining = localSheets.filter((s) => s.id !== sheet.id);
     setLocalSheets(remaining);
     if (activeSheetId === sheet.id) {
-      setActiveSheetId(remaining[0].id);
-      await loadRecords(remaining[0].id);
+      const nextSheet = remaining[0];
+      setActiveSheetId(nextSheet.id);
+      if (isAnnualSheet(nextSheet)) {
+        const year = getCurrentYear();
+        setSheetRecords(allSheetsRecords.filter(r => r.entryDate.startsWith(year)));
+        setIsAnnualView(true);
+      } else {
+        setIsAnnualView(false);
+        await loadRecords(nextSheet.id);
+      }
     }
+    await loadAllRecords();
   };
 
   /* ── 记录 CRUD ── */
   const openAdd = () => {
+    if (isAnnualView) { alert('全年表不支持新增记录，请在其他工作表中录入'); return; }
     const base = emptyRecord();
-    // 计算当前工作表最大序号 + 1
-    if (sheetRecords.length > 0) {
-      const maxSeq = sheetRecords.reduce((max, r) => {
-        const num = parseInt(String(r.seq).replace(/\D/g, ''), 10);
-        return !isNaN(num) && num > max ? num : max;
-      }, 0);
-      base.seq = String(maxSeq + 1);
-    }
     setEditingId(null);
     setForm(base);
     setShowForm(true);
@@ -912,7 +1059,7 @@ export default function StatsPage() {
 
   const deleteRecord = async (id: string) => {
     if (!confirm('确认删除这条记录吗？')) return;
-    await supabase.from('records').delete().eq('id', id);
+    await supabase.from('lead_records').delete().eq('id', id);
     setSheetRecords((prev) => prev.filter((r) => r.id !== id));
     showToast('已删除');
   };
@@ -931,7 +1078,8 @@ export default function StatsPage() {
     const recordCloudData = {
       sheet_id: activeSheetId,
       entry_date: final.entryDate || new Date().toISOString().slice(0, 10),  // 空日期使用今天
-      seq: final.seq,
+      cycle: final.cycle,
+      batch_no: final.batchNo,
       material_code: final.materialCode,
       spec: final.spec,
       size: final.size,
@@ -944,7 +1092,6 @@ export default function StatsPage() {
       loss: final.loss,
       first_bottom_convex_short_burst_rate: final.firstBottomConvexShortBurstRate,
       first_pass_rate: final.firstPassRate,
-      batch_yield_rate: final.batchYieldRate,
       defect_short: final.defectShort,
       defect_burst: final.defectBurst,
       defect_bottom_convex: final.defectBottomConvex,
@@ -961,13 +1108,13 @@ export default function StatsPage() {
 
     if (editingId) {
       // 编辑
-      await supabase.from('records').update(recordCloudData).eq('id', editingId);
+      await supabase.from('lead_records').update(recordCloudData).eq('id', editingId);
       setSheetRecords((prev) => prev.map((r) => r.id === editingId ? { ...final, id: editingId } : r));
       showToast('修改成功');
     } else {
       // 新增
       const { data: inserted } = await supabase
-        .from('records')
+        .from('lead_records')
         .insert({ ...recordCloudData, id: generateUUID() } as Record<string, unknown>)
         .select()
         .single();
@@ -1021,7 +1168,7 @@ export default function StatsPage() {
           if (!localSheet) {
             // 先检查数据库中是否已存在同名 sheet（其他用户创建的）
             const { data: existingSheet } = await supabase
-              .from('sheets')
+              .from('lead_sheets')
               .select('id, name')
               .eq('name', sheetName)
               .maybeSingle();
@@ -1036,7 +1183,7 @@ export default function StatsPage() {
             } else {
               // 创建新 sheet
               const { data: newSheet } = await supabase
-                .from('sheets')
+                .from('lead_sheets')
                 .insert({ name: sheetName, 'order': [], user_id: user.id })
                 .select('id, name')
                 .single();
@@ -1047,7 +1194,7 @@ export default function StatsPage() {
           } else {
             // 本地已存在，检查数据库是否也有（可能其他用户创建了同名 sheet）
             const { data: existingSheet } = await supabase
-              .from('sheets')
+              .from('lead_sheets')
               .select('id, name')
               .eq('name', sheetName)
               .maybeSingle();
@@ -1061,7 +1208,7 @@ export default function StatsPage() {
           }
 
           // 覆盖模式：先删除该 sheet 的所有旧记录
-          await supabase.from('records').delete().eq('sheet_id', localSheet!.id);
+          await supabase.from('lead_records').delete().eq('sheet_id', localSheet!.id);
 
           // 插入新记录
           const today = new Date().toISOString().slice(0, 10);
@@ -1069,7 +1216,8 @@ export default function StatsPage() {
             id: generateUUID(),
             sheet_id: localSheet!.id,
             entry_date: r.entryDate || today,  // 空日期使用今天
-            seq: r.seq,
+            cycle: r.cycle,
+            batch_no: r.batchNo,
             material_code: r.materialCode,
             spec: r.spec,
             size: r.size,
@@ -1082,7 +1230,6 @@ export default function StatsPage() {
             loss: r.loss,
             first_bottom_convex_short_burst_rate: r.firstBottomConvexShortBurstRate,
             first_pass_rate: r.firstPassRate,
-            batch_yield_rate: r.batchYieldRate,
             defect_short: r.defectShort,
             defect_burst: r.defectBurst,
             defect_bottom_convex: r.defectBottomConvex,
@@ -1098,18 +1245,26 @@ export default function StatsPage() {
             comments: r.comments || null,
           }));
 
-          await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
+          await supabase.from('lead_records').insert(cloudRecords as Record<string, unknown>[]);
           totalCount += validRecords.length;
 
           // 如果当前在导入的 sheet 上，更新记录
           if (activeSheetId === localSheet.id) {
-            await loadRecords(localSheet.id);
+            if (isAnnualView) {
+              const year = getCurrentYear();
+              const allRecs = await loadAllRecords();
+              setSheetRecords(allRecs.filter(r => r.entryDate.startsWith(year)));
+            } else {
+              await loadRecords(localSheet.id);
+            }
           }
         }
 
         if (totalCount === 0) {
           alert('Excel 中没有可识别的数据'); return;
         }
+        // 刷新全年表数据
+        await loadAllRecords();
         showToast(`成功导入 ${totalCount} 条记录`);
       } catch (err) {
         console.error(err);
@@ -1156,7 +1311,7 @@ export default function StatsPage() {
       // 一次性拉取所有 sheet 的记录
       const sheetIds = localSheets.map(s => s.id);
       const { data, error } = await supabase
-        .from('records')
+        .from('lead_records')
         .select('*')
         .in('sheet_id', sheetIds);
       if (error) throw error;
@@ -1178,7 +1333,8 @@ export default function StatsPage() {
             // 把数据库字段映射回导出值
             const dbFieldMap: Record<string, unknown> = {
               'entryDate':          r.entry_date ?? '',
-              'seq':               r.seq ?? '',
+              'cycle':             r.cycle ?? '',
+              'batchNo':           r.batch_no ?? '',
               'materialCode':      r.material_code ?? '',
               'spec':              r.spec ?? '',
               'size':              r.size ?? '',
@@ -1191,7 +1347,6 @@ export default function StatsPage() {
               'loss':              Number(r.loss) ?? 0,
               'firstBottomConvexShortBurstRate': Number(r.first_bottom_convex_short_burst_rate) ?? 0,
               'firstPassRate':      Number(r.first_pass_rate) ?? 0,
-              'batchYieldRate':    r.batch_yield_rate ?? undefined,
               'defectShort':       r.defect_short ?? 0,
               'defectBurst':       r.defect_burst ?? 0,
               'defectBottomConvex': r.defect_bottom_convex ?? 0,
@@ -1710,7 +1865,7 @@ export default function StatsPage() {
 
       {/* 顶部工具栏 */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <h1 className="text-3xl font-bold text-gray-900">生产良率统计</h1>
+        <h1 className="text-3xl font-bold text-gray-900">引线生产良率统计</h1>
         <p className="text-gray-500 text-sm hidden sm:block">牛角车间 · 云端同步</p>
         <div className="flex items-center gap-2 ml-auto">
           <button
@@ -1729,13 +1884,18 @@ export default function StatsPage() {
       <div className="flex items-end gap-0 mb-0 overflow-x-auto">
         {localSheets.map((sheet) => {
           const isActive = sheet.id === activeSheetId;
+          const isAnnual = isAnnualSheet(sheet);
           return (
             <div
               key={sheet.id}
               className={`group relative flex items-center gap-1.5 px-4 py-2 cursor-pointer select-none border-t border-l border-r text-sm font-medium rounded-t-lg transition-colors whitespace-normal ${
                 isActive
-                  ? 'bg-white border-gray-200 text-indigo-600 -mb-px z-10'
-                  : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                  ? isAnnual
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 -mb-px z-10'
+                    : 'bg-white border-gray-200 text-indigo-600 -mb-px z-10'
+                  : isAnnual
+                    ? 'bg-indigo-100/50 border-indigo-200 text-indigo-500 hover:bg-indigo-100'
+                    : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700'
               }`}
               onClick={() => switchSheet(sheet)}
             >
@@ -1754,9 +1914,9 @@ export default function StatsPage() {
                   className="bg-transparent border-b border-indigo-400 outline-none w-24 text-inherit px-0 py-0 h-auto text-sm"
                 />
               ) : (
-                <span onDoubleClick={(e) => { e.stopPropagation(); startRename(sheet); }}>{sheet.name}</span>
+                <span onDoubleClick={(e) => { if (!isAnnual) { e.stopPropagation(); startRename(sheet); } }}>{sheet.name}</span>
               )}
-              {isActive && localSheets.length > 1 && (
+              {isActive && !isAnnual && localSheets.length > 1 && (
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteSheet(sheet); }}
                   className="opacity-0 group-hover:opacity-100 ml-1 text-gray-400 hover:text-red-500 transition-opacity"
@@ -1791,23 +1951,86 @@ export default function StatsPage() {
           <span>平均良率：<strong className="text-green-600">{avgYield}%</strong></span>
         </div>
 
+        {/* ── 全年表日期范围筛选栏 ── */}
+        {isAnnualView && (
+          <div className="flex items-center gap-3 mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+            <svg className="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-sm font-medium text-indigo-700 whitespace-nowrap">日期范围：</span>
+            <input
+              type="date"
+              value={dateRangeStart}
+              onChange={(e) => setDateRangeStart(e.target.value)}
+              className="px-2.5 py-1.5 text-sm border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+              title="开始日期"
+            />
+            <span className="text-indigo-400 text-sm">~</span>
+            <input
+              type="date"
+              value={dateRangeEnd}
+              onChange={(e) => setDateRangeEnd(e.target.value)}
+              className="px-2.5 py-1.5 text-sm border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+              title="结束日期"
+            />
+            {(dateRangeStart || dateRangeEnd) && (
+              <button
+                onClick={() => { setDateRangeStart(''); setDateRangeEnd(''); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-indigo-600 hover:text-white hover:bg-indigo-400 border border-indigo-300 rounded-lg transition-colors"
+                title="清除日期范围筛选">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                清除日期
+              </button>
+            )}
+            {/* 快捷日期按钮 */}
+            <div className="flex items-center gap-1 ml-1">
+              <span className="text-xs text-indigo-400">快捷：</span>
+              <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 7); setDateRangeStart(d.toISOString().slice(0,10)); setDateRangeEnd(new Date().toISOString().slice(0,10)); }}
+                className="px-2 py-1 text-xs text-indigo-600 bg-white border border-indigo-200 rounded hover:bg-indigo-100 transition-colors">近7天</button>
+              <button onClick={() => { const d = new Date(); d.setDate(d.getDate() - 30); setDateRangeStart(d.toISOString().slice(0,10)); setDateRangeEnd(new Date().toISOString().slice(0,10)); }}
+                className="px-2 py-1 text-xs text-indigo-600 bg-white border border-indigo-200 rounded hover:bg-indigo-100 transition-colors">近30天</button>
+              <button onClick={() => { setDateRangeStart(new Date().toISOString().slice(0,10)); setDateRangeEnd(new Date().toISOString().slice(0,10)); }}
+                className="px-2 py-1 text-xs text-indigo-600 bg-white border border-indigo-200 rounded hover:bg-indigo-100 transition-colors">今天</button>
+            </div>
+            {/* 当前筛选状态提示 */}
+            {(dateRangeStart || dateRangeEnd) && (
+              <span className="ml-auto text-xs text-indigo-500 font-medium">
+                {dateRangeStart && dateRangeEnd
+                  ? `${dateRangeStart} 至 ${dateRangeEnd}：共 ${filtered.length} 条`
+                  : dateRangeStart
+                    ? `${dateRangeStart} 之后：共 ${filtered.length} 条`
+                    : `${dateRangeEnd} 之前：共 ${filtered.length} 条`}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* 操作栏 */}
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <button onClick={openAdd}
-            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+            className={`flex items-center gap-1.5 px-4 py-2 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm ${
+              isAnnualView ? 'bg-gray-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+            }`}
+            disabled={isAnnualView}
+            title={isAnnualView ? '全年表不支持新增记录' : '录入记录'}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             录入记录
           </button>
 
-          <label className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium cursor-pointer transition-colors">
+          <label className={`flex items-center gap-1.5 px-4 py-2 border text-gray-700 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
+            isAnnualView ? 'border-gray-200 bg-gray-100 cursor-not-allowed opacity-60' : 'border-gray-200 hover:bg-gray-50'
+          }`}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            导入 Excel
-            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
+            {isAnnualView ? '导入 Excel（全年报不可导入）' : '导入 Excel'}
+            {isAnnualView ? null : <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />}
           </label>
 
           <button onClick={handleExport}
@@ -1835,7 +2058,7 @@ export default function StatsPage() {
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
-              type="text" placeholder="搜索日期/物料代码/流转单号/规格…"
+              type="text" placeholder="多词搜索，如：400V 2603（空格分隔，满足所有词）"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition" />
@@ -1856,9 +2079,9 @@ export default function StatsPage() {
             <table className="w-full text-xs border-collapse" style={{tableLayout: 'fixed'}}>
               <colgroup>
               <col style={{width: '100px', minWidth: '100px'}} />
-              <col style={{width: '50px', minWidth: '50px'}} />
-              <col style={{width: '120px', minWidth: '120px'}} />
               <col style={{width: '80px', minWidth: '80px'}} />
+              <col style={{width: '150px', minWidth: '150px'}} />
+              <col style={{width: '150px', minWidth: '150px'}} />
               <col style={{width: '80px', minWidth: '80px'}} />
               <col style={{width: '120px', minWidth: '120px'}} />
               <col style={{width: '80px', minWidth: '80px'}} />
@@ -1888,7 +2111,8 @@ export default function StatsPage() {
                 <tr>
                   {[
                     { key: 'entryDate', label: '录入日期' },
-                    { key: 'seq', label: '序号' },
+                    { key: 'cycle', label: '周期' },
+                    { key: 'batchNo', label: '批号' },
                     { key: 'materialCode', label: '物料代码' },
                     { key: 'spec', label: '规格' },
                     { key: 'size', label: '尺寸' },
@@ -1901,7 +2125,6 @@ export default function StatsPage() {
                     { key: 'loss', label: '损耗(%)' },
                     { key: 'firstBottomConvexShortBurstRate', label: '一次底凸短路爆破率(%)' },
                     { key: 'firstPassRate', label: '一次直通率(%)' },
-                    { key: 'batchYieldRate', label: '整批良率(%)' },
                     { key: 'defectShort', label: '短路' },
                     { key: 'defectBurst', label: '爆破' },
                     { key: 'defectBottomConvex', label: '底凸' },
@@ -1923,7 +2146,7 @@ export default function StatsPage() {
 
                     return (
                       <th key={key}
-                        className={`relative px-2 py-2 text-center font-semibold whitespace-normal border border-gray-200 ${isSorted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} ${!isActions ? 'hover:bg-gray-100 select-none' : ''}`}
+                        className={`relative px-2 py-2.5 text-center font-semibold whitespace-normal border border-gray-200 ${isSorted ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600'} ${!isActions ? 'hover:bg-gray-100 select-none' : ''}`}
                       >
                         <div
                           className={`flex items-center justify-center gap-1 ${!isActions ? 'cursor-pointer' : ''}`}
@@ -1976,22 +2199,22 @@ export default function StatsPage() {
                   })}
                 </tr>
               </thead><tfoot>
-                  <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
+                  <tr className="bg-indigo-50 border-t-2 border-indigo-300 font-bold text-xs">
                     <td className="px-2 py-1.5 text-indigo-700 text-center min-w-0 overflow-hidden truncate border border-gray-200" style={{width:'100px'}}>汇总 ({filtered.length} 条)</td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'50px'}}></td>
+                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'70px'}}></td>
+                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'120px'}}></td>
+                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'200px'}}></td>
+                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'80px'}}></td>
+                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'80px'}}></td>
                     <td className="px-2 py-1.5 border border-gray-200" style={{width:'120px'}}></td>
                     <td className="px-2 py-1.5 border border-gray-200" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'120px'}}></td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'90px'}}>{summary.totalDesign.toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'80px'}}>{summary.totalDesign.toLocaleString()}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600 font-medium border border-gray-200" style={{width:'90px'}}>{summary.totalActual.toLocaleString()}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'80px'}}>{summary.totalWinding.toLocaleString()}</td>
                     <td className="px-2 py-1.5 text-center text-green-600 font-medium border border-gray-200" style={{width:'80px'}}>{summary.totalGood.toLocaleString()}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'80px'}}>{summary.lossRate >= 0 ? "+" + formatNum(summary.lossRate) + "%" : formatNum(summary.lossRate) + "%"}</td>
                     <td className="px-2 py-1.5 text-center text-red-500 border border-gray-200" style={{width:'100px'}}>{formatNum(summary.firstBSBRate)}%</td>
                     <td className="px-2 py-1.5 text-center text-blue-600 border border-gray-200" style={{width:'80px'}}>{formatNum(summary.firstPassRate)}%</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'80px'}}>{summary.batchYieldRate != null ? formatNum(summary.batchYieldRate) + "%" : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectShort > 0 ? formatNum(summary.defectShort) : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectBurst > 0 ? formatNum(summary.defectBurst) : "—"}</td>
                     <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectBottomConvex > 0 ? formatNum(summary.defectBottomConvex) : "—"}</td>
@@ -2008,9 +2231,10 @@ export default function StatsPage() {
                   </tr>
                 </tfoot><tbody>
                 {filtered.map((r, i) => (
-                  <tr key={r.id} className={`group hover:bg-indigo-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                  <tr key={r.id} className={`group hover:bg-indigo-50/50 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                     {renderCommentCell(r, 'entryDate', r.entryDate, 'whitespace-normal')}
-                    {renderCommentCell(r, 'seq', r.seq)}
+                    {renderCommentCell(r, 'cycle', r.cycle ?? '')}
+                    {renderCommentCell(r, 'batchNo', r.batchNo ?? '')}
                     {renderCommentCell(r, 'materialCode', r.materialCode, 'font-medium text-gray-800')}
                     {renderCommentCell(r, 'spec', r.spec)}
                     {renderCommentCell(r, 'size', r.size)}
@@ -2023,7 +2247,6 @@ export default function StatsPage() {
                     {(() => { const absLoss = Math.abs(r.loss); const hasComment = r.comments && r.comments['loss']; const colorClass = absLoss > 1 ? (hasComment ? 'text-yellow-600' : 'text-red-600') : (hasComment ? 'text-orange-500' : ''); return renderCommentCell(r, 'loss', r.loss >= 0 ? `+${formatNum(r.loss)}%` : `${formatNum(r.loss)}%`, colorClass); })()}
                     {(() => { const val = r.firstBottomConvexShortBurstRate; const hasComment = r.comments && r.comments['firstBottomConvexShortBurstRate']; const colorClass = val > 1 ? (hasComment ? 'text-yellow-600' : 'text-red-600') : (hasComment ? 'text-orange-500' : ''); return renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${formatNum(val)}%`, colorClass); })()}
                     {renderCommentCell(r, 'firstPassRate', `${formatNum(r.firstPassRate)}%`)}
-                    {renderCommentCell(r, 'batchYieldRate', r.batchYieldRate != null ? `${formatNum(r.batchYieldRate)}%` : '—')}
                     {renderCommentCell(r, 'defectShort', r.defectShort ? formatNum(r.defectShort) : '—')}
                     {renderCommentCell(r, 'defectBurst', r.defectBurst ? formatNum(r.defectBurst) : '—')}
                     {renderCommentCell(r, 'defectBottomConvex', r.defectBottomConvex ? formatNum(r.defectBottomConvex) : '—')}
@@ -2034,10 +2257,10 @@ export default function StatsPage() {
                     {renderCommentCell(r, 'defectLowCap', r.defectLowCap ? formatNum(r.defectLowCap) : '—')}
                     {renderCommentCell(r, 'defectDF', r.defectDF ? formatNum(r.defectDF) : '—')}
                     {/* 作业员和备注不支持批注，保持原样 */}
-                    <td className="px-2 py-1.5 border border-gray-200">{r.operator}</td>
-                    <td className="px-2 py-1.5 max-w-[120px] truncate border border-gray-200" title={r.notes}>{r.notes}</td>
+                    <td className="px-2 py-1.5 text-center border border-gray-100">{r.operator}</td>
+                    <td className="px-2 py-1.5 text-center max-w-[120px] truncate border border-gray-100" title={r.notes}>{r.notes}</td>
                     {renderCommentCell(r, 'reworkOrderNo', r.reworkOrderNo)}
-                    <td className="px-2 py-1.5 border border-gray-200">
+                    <td className="px-2 py-1.5 text-center border border-gray-100">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => openEdit(r)} className="p-1 text-indigo-500 hover:text-indigo-700" title="编辑">
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2243,11 +2466,21 @@ export default function StatsPage() {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">录入日期</label>
-                    <input type="date" value={form.entryDate} onChange={(e) => setForm((f) => ({ ...f, entryDate: e.target.value }))} className={inputCls} />
+                    <input
+                      type="text"
+                      value={form.entryDate}
+                      onChange={(e) => setForm((f) => ({ ...f, entryDate: normalizeDate(e.target.value) }))}
+                      placeholder="2026.5.3 / 2026-05-03"
+                      className={inputCls}
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">序号</label>
-                    {textInput('seq', '自动编号')}
+                    <label className="block text-xs font-medium text-gray-500 mb-1">周期</label>
+                    {textInput('cycle', '2025-W01')}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">批号</label>
+                    {textInput('batchNo', 'B001')}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">物料代码 <span className="text-red-400">*</span></label>
@@ -2306,7 +2539,7 @@ export default function StatsPage() {
               {/* 良率统计（自动计算） */}
               <div>
                 <h3 className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-3">良率统计（%）</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">一次底凸短路爆破率（自动）</label>
                     <div className="px-2.5 py-2 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 border border-blue-200">{form.windingQty > 0 ? `${form.firstBottomConvexShortBurstRate}%` : '—'}</div>
@@ -2314,10 +2547,6 @@ export default function StatsPage() {
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">一次直通率（自动）</label>
                     <div className="px-2.5 py-2 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 border border-blue-200">{form.actualQty > 0 ? `${form.firstPassRate}%` : '—'}</div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">整批良率</label>
-                    {numInput('batchYieldRate')}
                   </div>
                 </div>
               </div>

@@ -21,6 +21,8 @@ export interface ProductionRecord {
 
   // 基本信息
   entryDate: string;       // 录入日期
+  cycle?: string;          // 周期（引线统计用）
+  batchNo?: string;        // 批号（引线统计用）
   seq: string;             // 序号
   materialCode: string;    // 物料代码
   spec: string;            // 规格
