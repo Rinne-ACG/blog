@@ -9,12 +9,18 @@ export default function LoginPage() {
   const [error, setError]         = useState('');
   const navigate = useNavigate();
 
+  // 用户名映射表（简短账号 → 真实邮箱）
+  const usernameMap: Record<string, string> = {
+    admin: 'admin@123.com',
+    ysy123: 'ysy@123.com',
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    // 用户名映射（直接输入 admin → 自动转为真实邮箱）
-    const emailOrUsername = username === 'admin' ? 'admin@123.com' : username;
+    // 用户名映射（直接输入简短账号 → 自动转为真实邮箱）
+    const emailOrUsername = usernameMap[username] ?? username;
     const { error: err } = await supabase.auth.signInWithPassword({ email: emailOrUsername, password });
     setLoading(false);
     if (err) {
