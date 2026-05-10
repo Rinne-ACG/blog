@@ -26,8 +26,8 @@ const calcDerived = (f: ProductionRecord): ProductionRecord => {
   const actualQty = f.goodQty + defectSum;
   const loss = f.designQty > 0
     ? round4((actualQty - f.designQty) / f.designQty * 100) : 0;
-  const firstBottomConvexShortBurstRate = f.windingQty > 0
-    ? round4((f.defectShort + f.defectBurst + f.defectBottomConvex) / f.windingQty * 100) : 0;
+  const firstBottomConvexShortBurstRate = f.actualQty > 0
+    ? round4((f.defectShort + f.defectBurst + f.defectBottomConvex) / f.actualQty * 100) : 0;
   const firstPassRate = calcRate(f.goodQty, actualQty);
   return { ...f, actualQty, loss, firstBottomConvexShortBurstRate, firstPassRate };
 };
@@ -241,7 +241,11 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
       firstPassRate: 0,
       batchYieldRate: (() => {
         const raw = g(['整批良率', 'batchYieldRate']);
-        return raw !== undefined && raw !== null && raw !== '' ? numFn(raw) : undefined;
+        if (raw === undefined || raw === null || raw === '') return undefined;
+        const val = numFn(raw);
+        // 智能识别：如果值 <= 1（且 >= 0），认为是小数形式（如 0.999），转为百分比数值（99.9）
+        // 如果值 > 1，直接使用（已经是百分比数值，如 99.9）
+        return val >= 0 && val <= 1 ? Math.round(val * 10000) / 100 : val;
       })(),
       defectShort: numFn(g(['短路', 'defectShort'])),
       defectBurst: numFn(g(['爆破', 'defectBurst'])),
@@ -576,8 +580,8 @@ export default function StatsPage() {
     const totalWinding  = filtered.reduce((s, r) => s + r.windingQty, 0);
     const totalGood     = filtered.reduce((s, r) => s + r.goodQty, 0);
     const lossRate      = totalDesign > 0 ? round4((totalActual - totalDesign) / totalDesign * 100) : 0;
-    const firstBSBRate  = totalWinding > 0 ? round4(
-      filtered.reduce((s, r) => s + r.defectShort + r.defectBurst + r.defectBottomConvex, 0) / totalWinding * 100
+    const firstBSBRate  = totalActual > 0 ? round4(
+      filtered.reduce((s, r) => s + r.defectShort + r.defectBurst + r.defectBottomConvex, 0) / totalActual * 100
     ) : 0;
     const firstPassRate = totalActual > 0 ? round4(totalGood / totalActual * 100) : 0;
     const batchYieldValues = filtered.map(r => r.batchYieldRate).filter((v): v is number => v !== undefined && v !== null);
@@ -2079,7 +2083,7 @@ export default function StatsPage() {
             <div className="text-xl font-bold text-green-700">{totalGood.toLocaleString()}</div>
           </div>
           <div className="bg-blue-50 rounded-lg p-3">
-            <div className="text-xs text-blue-600 mb-1">完工产量</div>
+            <div className="text-xs text-blue-600 mb-1">实际总产量</div>
             <div className="text-xl font-bold text-blue-700">{totalActual.toLocaleString()}</div>
           </div>
           <div className="bg-amber-50 rounded-lg p-3">
@@ -2104,7 +2108,7 @@ export default function StatsPage() {
                 <tr className="bg-white">
                   <td className="px-3 py-2 text-gray-800">平均损耗率</td>
                   <td className="px-3 py-2 text-right font-medium text-gray-900">{avgLossRate}%</td>
-                  <td className="px-3 py-2 text-gray-500 text-xs">(完工产量 - 总设计数量) / 总设计数量 × 100%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">(实际总产量 - 总设计数量) / 总设计数量 × 100%</td>
                 </tr>
                 <tr className="bg-gray-50">
                   <td className="px-3 py-2 text-gray-800">低压损耗 (≤120V)</td>
@@ -2124,12 +2128,12 @@ export default function StatsPage() {
                 <tr className="bg-white">
                   <td className="px-3 py-2 text-gray-800">底凸短路爆破率</td>
                   <td className="px-3 py-2 text-right font-medium text-gray-900">{totalBottomConvexShortBurstRate}%</td>
-                  <td className="px-3 py-2 text-gray-500 text-xs">(短路+爆破+底凸) / 卷绕数 × 100%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">(短路+爆破+底凸) / 实际总产量 × 100%</td>
                 </tr>
                 <tr className="bg-gray-50">
                   <td className="px-3 py-2 text-gray-800">总直通率</td>
                   <td className="px-3 py-2 text-right font-medium text-indigo-600 font-semibold">{totalPassRate}%</td>
-                  <td className="px-3 py-2 text-gray-500 text-xs">良品数量 / 完工产量 × 100%</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">良品数量 / 实际总产量 × 100%</td>
                 </tr>
               </tbody>
             </table>

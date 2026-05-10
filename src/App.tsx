@@ -8,7 +8,6 @@ import PostPage from './pages/PostPage';
 import GalleryPage from './pages/GalleryPage';
 import StatsPage from './pages/StatsPage';
 import BoltStatsPage from './pages/BoltStatsPage';
-import LeadStatsPage from './pages/LeadStatsPage';
 import LoginPage from './pages/LoginPage';
 import ImageToExcelPage from './pages/ImageToExcelPage';
 
@@ -59,14 +58,6 @@ export default function App() {
               element={
                 <AuthGuard>
                   <BoltStatsPage />
-                </AuthGuard>
-              }
-            />
-            <Route
-              path="/lead-stats"
-              element={
-                <AuthGuard>
-                  <LeadStatsPage />
                 </AuthGuard>
               }
             />
