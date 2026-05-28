@@ -181,7 +181,7 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
     goodQty: headerColIndexMap['良品数'] ?? -1,
     loss: headerColIndexMap['损耗'] ?? -1,
     firstBottomConvexShortBurstRate: headerColIndexMap['一次底凸、短路、爆破率'] ?? headerColIndexMap['一次底凸短路爆破率'] ?? -1,
-    firstPassRate: headerColIndexMap['一次\n直通率'] ?? headerColIndexMap['一次直通率'] ?? -1,
+    firstPassRate: headerColIndexMap['老化、测试良品率'] ?? headerColIndexMap['一次\n直通率'] ?? headerColIndexMap['一次直通率'] ?? -1,
     batchYieldRate: headerColIndexMap['整批良率'] ?? -1,
     defectShort: headerColIndexMap['短路'] ?? -1,
     defectBurst: headerColIndexMap['爆破'] ?? -1,
@@ -307,7 +307,7 @@ const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: numbe
   { key: 'goodQty', label: '良品数', width: 10 },
   { key: 'loss', label: '损耗(%)', width: 10 },
   { key: 'firstBottomConvexShortBurstRate', label: '一次底凸短路爆破率(%)', width: 20 },
-  { key: 'firstPassRate', label: '一次直通率(%)', width: 14 },
+  { key: 'firstPassRate', label: '老化、测试良品率(%)', width: 14 },
   { key: 'batchYieldRate', label: '整批良率(%)', width: 12 },
   { key: 'defectShort', label: '短路', width: 8 },
   { key: 'defectBurst', label: '爆破', width: 8 },
@@ -328,7 +328,7 @@ const COMMENT_FIELD_LABELS: Record<string, string> = {
   size: '尺寸', workOrderNo: '流转单号', positiveFoilVoltage: '正箔电压',
   designQty: '设计数量', actualQty: '实际此单总数', windingQty: '卷绕数',
   goodQty: '良品数', loss: '损耗', firstBottomConvexShortBurstRate: '一次底凸短路爆破率',
-  firstPassRate: '一次直通率', batchYieldRate: '整批良率',
+  firstPassRate: '老化、测试良品率', batchYieldRate: '整批良率',
   defectShort: '短路', defectBurst: '爆破', defectBottomConvex: '底凸',
   defectVoltage: '耐压', defectAppearance: '外观', defectLeakage: '漏电',
   defectHighCap: '高容', defectLowCap: '低容', defectDF: 'DF',
@@ -1904,7 +1904,7 @@ export default function StatsPage() {
                     { key: 'goodQty', label: '良品数' },
                     { key: 'loss', label: '损耗(%)' },
                     { key: 'firstBottomConvexShortBurstRate', label: '一次底凸短路爆破率(%)' },
-                    { key: 'firstPassRate', label: '一次直通率(%)' },
+                    { key: 'firstPassRate', label: '老化、测试良品率(%)' },
                     { key: 'batchYieldRate', label: '整批良率(%)' },
                     { key: 'defectShort', label: '短路' },
                     { key: 'defectBurst', label: '爆破' },
@@ -2087,7 +2087,7 @@ export default function StatsPage() {
             <div className="text-xl font-bold text-blue-700">{totalActual.toLocaleString()}</div>
           </div>
           <div className="bg-amber-50 rounded-lg p-3">
-            <div className="text-xs text-amber-600 mb-1">总直通率</div>
+            <div className="text-xs text-amber-600 mb-1">总老化、测试良品率</div>
             <div className="text-xl font-bold text-amber-700">{totalPassRate}%</div>
           </div>
         </div>
@@ -2131,7 +2131,7 @@ export default function StatsPage() {
                   <td className="px-3 py-2 text-gray-500 text-xs">(短路+爆破+底凸) / 实际总产量 × 100%</td>
                 </tr>
                 <tr className="bg-gray-50">
-                  <td className="px-3 py-2 text-gray-800">总直通率</td>
+                  <td className="px-3 py-2 text-gray-800">总老化、测试良品率</td>
                   <td className="px-3 py-2 text-right font-medium text-indigo-600 font-semibold">{totalPassRate}%</td>
                   <td className="px-3 py-2 text-gray-500 text-xs">良品数量 / 实际总产量 × 100%</td>
                 </tr>
@@ -2316,7 +2316,7 @@ export default function StatsPage() {
                     <div className="px-2.5 py-2 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 border border-blue-200">{form.windingQty > 0 ? `${form.firstBottomConvexShortBurstRate}%` : '—'}</div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">一次直通率（自动）</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">老化、测试良品率（自动）</label>
                     <div className="px-2.5 py-2 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 border border-blue-200">{form.actualQty > 0 ? `${form.firstPassRate}%` : '—'}</div>
                   </div>
                   <div>

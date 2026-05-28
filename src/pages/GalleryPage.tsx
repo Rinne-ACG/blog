@@ -23,7 +23,7 @@ const albums: Record<string, {
   cover: string;
   images: { src: string; caption?: string }[];
 }> = {
-  'test1': {
+  '2604014': {
     title: '2604014',
     description: '2604014不良记录图片',
     cover: '/images/2604014/2604014流转单.jpg',
@@ -35,7 +35,7 @@ const albums: Record<string, {
       { src: '/images/2604014/二次老化电压.jpg', caption: '二次老化电压' },
     ],
   },
-  'test2': {
+  '2604131': {
     title: '2604131',
     description: '2604131不良记录图片',
     cover: '/images/2604131/2604131流转单.jpg',
@@ -47,6 +47,110 @@ const albums: Record<string, {
       { src: '/images/2604131/二次老化电压.jpg', caption: '二次老化电压' },
       { src: '/images/2604131/异常处理单.jpg', caption: '异常处理单' },
       { src: '/images/2604131/拆解图.jpg', caption: '拆解图' },
+    ],
+  },
+  '2604280': {
+    title: '2604280',
+    description: '2604280不良记录图片',
+    cover: '/images/2604280/1ddb6214ca54a7e62852986c81864c64.jpg',
+    images: [
+      { src: '/images/2604280/1ddb6214ca54a7e62852986c81864c64.jpg' },
+      { src: '/images/2604280/553e33b1983a8ff56ebb7693999b9c94.jpg' },
+      { src: '/images/2604280/793fe46adc1a834895760e4024734cb2.jpg' },
+      { src: '/images/2604280/d138a09f653d1f0b4e32e664989991b8.jpg' },
+    ],
+  },
+  '2605023': {
+    title: '2605023',
+    description: '2605023不良记录图片',
+    cover: '/images/2605023/44d29dd85e92a0c3a04766c3ef342487.jpg',
+    images: [
+      { src: '/images/2605023/44d29dd85e92a0c3a04766c3ef342487.jpg' },
+      { src: '/images/2605023/57d05237025735a1aab6693f440af6a5.jpg' },
+      { src: '/images/2605023/b9ad172dca94cd6cdfd766fe2e23b4de.jpg' },
+      { src: '/images/2605023/ccaf121e09b0e75141ea134dc4df03db.jpg' },
+    ],
+  },
+  '2605030': {
+    title: '2605030',
+    description: '2605030不良记录图片',
+    cover: '/images/2605030/13594f7355516d7d6a63ed6105ed5d9c.jpg',
+    images: [
+      { src: '/images/2605030/13594f7355516d7d6a63ed6105ed5d9c.jpg' },
+      { src: '/images/2605030/1f569c35cfb25e0b14eee0aae5ea652c.jpg' },
+      { src: '/images/2605030/ac79da3d9fbdf1ee428bdbdc85613894.jpg' },
+      { src: '/images/2605030/e7dedd147af9cf8f38156a58abe16754.jpg' },
+      { src: '/images/2605030/e810f405c51f5bd4f36df5e9c06e35af.jpg' },
+      { src: '/images/2605030/e921b62ec38f26361c0068e757ed6791.jpg' },
+    ],
+  },
+  '2605037': {
+    title: '2605037',
+    description: '2605037不良记录图片',
+    cover: '/images/2605037/29e29eaf2b919a8a6271d443d6e72bb1.jpg',
+    images: [
+      { src: '/images/2605037/29e29eaf2b919a8a6271d443d6e72bb1.jpg' },
+      { src: '/images/2605037/3ba9226269ad551d0bcc6caf4295aa1a.jpg' },
+      { src: '/images/2605037/76390c14d8e2a78cdc4aa157f28bbfdc.jpg' },
+      { src: '/images/2605037/7c9a010f22c8c4e32478eb882ea1529f.jpg' },
+    ],
+  },
+  '2605076': {
+    title: '2605076',
+    description: '2605076不良记录图片',
+    cover: '/images/2605076/482a62c807dd4234b0787ddd2e51edbe.jpg',
+    images: [
+      { src: '/images/2605076/482a62c807dd4234b0787ddd2e51edbe.jpg' },
+      { src: '/images/2605076/5c830ff2fc4a253b221419efba9e6597.jpg' },
+      { src: '/images/2605076/60fe34e5d99ef51230671a360873dc27.jpg' },
+      { src: '/images/2605076/6e15826036086716960b081196001fa7.jpg' },
+    ],
+  },
+  '2605082': {
+    title: '2605082',
+    description: '2605082不良记录图片',
+    cover: '/images/2605082/7c1da4c25bd19fba79d155c5c62ef579.jpg',
+    images: [
+      { src: '/images/2605082/7c1da4c25bd19fba79d155c5c62ef579.jpg' },
+      { src: '/images/2605082/a680fa6c13cd3fdccfda4321ed7c65bc.jpg' },
+      { src: '/images/2605082/b395fd46e87400dec8342ac1b1612047.jpg' },
+      { src: '/images/2605082/deb0cc060d4c5e752eeea14a07761942.jpg' },
+    ],
+  },
+  '2605091': {
+    title: '2605091',
+    description: '2605091不良记录图片',
+    cover: '/images/2605091/479facf4ded8ed23ea6cb820ed55eac0.jpg',
+    images: [
+      { src: '/images/2605091/479facf4ded8ed23ea6cb820ed55eac0.jpg' },
+      { src: '/images/2605091/75b50446f0cbae23b9dfcf9f60fe4f63.jpg' },
+      { src: '/images/2605091/7712ec2f865a194c72f3b6fdfb9559ed.jpg' },
+      { src: '/images/2605091/91c1c1fa975732d8fc1457f7fdf4bb38.jpg' },
+      { src: '/images/2605091/daead0596aba890ad8c70dc4a778ef36.jpg' },
+    ],
+  },
+  '2605108': {
+    title: '2605108',
+    description: '2605108不良记录图片',
+    cover: '/images/2605108/08ddb921a36ea2b1b73a90d2ae39928b.jpg',
+    images: [
+      { src: '/images/2605108/08ddb921a36ea2b1b73a90d2ae39928b.jpg' },
+      { src: '/images/2605108/2d4cff7730bf913b698284952bd15895.jpg' },
+      { src: '/images/2605108/4aba45a4582795719edec98ac14ab71c.jpg' },
+      { src: '/images/2605108/5c3aac88c56fa6aef020a1f801b3b415.jpg' },
+      { src: '/images/2605108/62b7e39b3a2297492e714cd55bb68975.jpg' },
+      { src: '/images/2605108/b4308cdbe44453073235958d8a065c1a.jpg' },
+    ],
+  },
+  '2605140': {
+    title: '2605140',
+    description: '2605140不良记录图片',
+    cover: '/images/2605140/0813eba9ec0d559069a94499ebd00972.jpg',
+    images: [
+      { src: '/images/2605140/0813eba9ec0d559069a94499ebd00972.jpg' },
+      { src: '/images/2605140/f42d78b540dae0ed194db311c94b5303.jpg' },
+      { src: '/images/2605140/f99b3598e62bc3fe7f064fe992faea75.jpg' },
+      { src: '/images/2605140/fa54eaa1a860f163df078ee158ab163d.jpg' },
     ],
   },
   'travel': {
