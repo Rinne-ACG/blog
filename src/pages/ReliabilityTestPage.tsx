@@ -61,11 +61,6 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 /* ─── 格式化工具 ─── */
-function formatNum(n: number | undefined | null): string {
-  if (n == null) return '-';
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
-
 function formatTime(val: string | null | undefined): string {
   if (!val) return '';
   try {
@@ -240,7 +235,7 @@ export default function ReliabilityTestPage() {
     // 列筛选
     for (const [field, vals] of Object.entries(filterValues)) {
       if (vals.size > 0) {
-        list = list.filter(r => vals.has(String((r as Record<string, unknown>)[field] ?? '')));
+        list = list.filter(r => vals.has(String((r as unknown as Record<string, unknown>)[field] ?? '')));
       }
     }
 
@@ -325,14 +320,14 @@ export default function ReliabilityTestPage() {
         const { error } = await reliabilityDb.from(TABLE).update(row).eq('id', editingRecord.id);
         if (error) throw error;
         setRecords(prev => prev.map(r => r.id === editingRecord.id ? { ...r, ...row } as ReliabilityTestRecord : r));
-        showToast('已更新');
+        showToast('已更新', 'success');
       } else {
         row.create_time = now;
         row.update_time = now;
         const { data, error } = await reliabilityDb.from(TABLE).insert(row).select().single();
         if (error) throw error;
         setRecords(prev => [{ id: data.id, ...row } as ReliabilityTestRecord, ...prev]);
-        showToast('已新增');
+        showToast('已新增', 'success');
       }
       setShowForm(false);
     } catch (err) {
@@ -350,7 +345,7 @@ export default function ReliabilityTestPage() {
       const { error } = await reliabilityDb.from(TABLE).delete().eq('id', deleteTarget.id);
       if (error) throw error;
       setRecords(prev => prev.filter(r => r.id !== deleteTarget.id));
-      showToast('已删除');
+      showToast('已删除', 'success');
     } catch (err) {
       showToast('删除失败', 'error');
     } finally {
@@ -452,7 +447,7 @@ export default function ReliabilityTestPage() {
 
       if (added > 0) {
         await loadRecords();
-        showToast(`导入成功 ${added} 条`);
+        showToast(`导入成功 ${added} 条`, 'success');
       } else {
         showToast('未导入任何数据，请检查 Excel 列名是否正确', 'error');
       }
@@ -543,7 +538,6 @@ export default function ReliabilityTestPage() {
                               style={{ top: filterPos?.top ?? 0, left: filterPos?.left ?? 0 }}
                               onClick={e => e.stopPropagation()}>
                               <FilterDropdown
-                                fieldKey={col.field}
                                 uniqueVals={getUniqueVals(col.field)}
                                 selected={filterValues[col.field] ?? new Set()}
                                 onChange={(f, s) => setFilterValues(prev => ({ ...prev, [f]: s }))}
@@ -570,9 +564,9 @@ export default function ReliabilityTestPage() {
                       </td>
                       {MAIN_COLUMNS.map(col => {
                         const val = r[col.field];
-                        const display = col.field === 'start_time' ? formatTime(val)
-                          : col.field === 'five_days' ? (val || '-')
-                          : (val ?? '-');
+                        const display = col.field === 'start_time' ? formatTime(val as string | null | undefined)
+                          : col.field === 'five_days' ? (val ? String(val) : '-')
+                          : (val == null ? '-' : String(val));
                         return (
                           <td key={col.field}
                             className={`px-2 py-1.5 text-gray-700 whitespace-nowrap text-center ${

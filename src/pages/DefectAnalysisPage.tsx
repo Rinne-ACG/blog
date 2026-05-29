@@ -172,7 +172,7 @@ export default function DefectAnalysisPage() {
 
   /* ─── 添加图片 ─── */
   const [newImages, setNewImages] = useState<{ id: string; file: File; caption: string; preview: string }[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [_uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ─── 提示 ─── */
@@ -580,7 +580,6 @@ export default function DefectAnalysisPage() {
   const handleExport = () => {
     const rows = filteredSorted();
     if (rows.length === 0) { showToast('没有可导出的数据', 'error'); return; }
-    const header = EXPORT_COLUMNS.map(c => c.label);
     // 合并表头（异常详情 跨4列）
     const mergeHeader = ['日期', '序号', '流转单号', '规格尺寸', '正箔供应商', '正箔电压', '正箔批号',
       '异常责任判定', '异常详情', '', '', '', '不良原因分析', '备注'];
@@ -622,7 +621,6 @@ export default function DefectAnalysisPage() {
   /* ─── 渲染 ─── */
   const displayRows = filteredSorted();
   const sum = summary();
-  const activeSheet = sheets.find(s => s.id === activeSheetId);
 
   if (sheetLoading) {
     return (
