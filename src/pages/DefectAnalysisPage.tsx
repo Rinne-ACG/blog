@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
+import { albums } from './GalleryPage';
 import type { DefectAnalysisRecord } from '../types';
 
 /* ─── 工具函数 ─── */
@@ -99,7 +100,7 @@ function FilterDropdown({
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           onClick={e => e.stopPropagation()}
-          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-300"
+          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-300"
           autoFocus
         />
       </div>
@@ -108,7 +109,7 @@ function FilterDropdown({
           onClick={e => e.stopPropagation()}>
           <input type="checkbox" checked={allSelected}
             onChange={() => onChange(fieldKey, allSelected ? new Set() : new Set(uniqueVals))}
-            className="w-3 h-3 accent-indigo-600" />
+            className="w-3 h-3 accent-emerald-600" />
           <span className="text-xs text-gray-600 font-medium">全选</span>
         </label>
       </div>
@@ -122,7 +123,7 @@ function FilterDropdown({
                 if (next.has(v)) next.delete(v); else next.add(v);
                 onChange(fieldKey, next);
               }}
-              className="w-3 h-3 accent-indigo-600" />
+              className="w-3 h-3 accent-emerald-600" />
             <span className="text-xs text-gray-700 truncate max-w-[160px]" title={v}>{v || '（空）'}</span>
           </label>
         ))}
@@ -162,8 +163,17 @@ export default function DefectAnalysisPage() {
   /* ─── 筛选 / 排序 ─── */
   const [filterValues, setFilterValues] = useState<Record<string, Set<string>>>({});
   const [openFilterField, setOpenFilterField] = useState<string | null>(null);
+  const [filterPos, setFilterPos] = useState<{ top: number; left: number } | null>(null);
   const [sortField, setSortField] = useState<keyof DefectAnalysisRecord | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  /* ─── 图片预览 ─── */
+  const [lightboxImg, setLightboxImg] = useState<{ src: string; caption?: string; idx: number; list: { src: string; caption?: string }[] } | null>(null);
+
+  /* ─── 添加图片 ─── */
+  const [newImages, setNewImages] = useState<{ id: string; file: File; caption: string; preview: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ─── 提示 ─── */
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -173,13 +183,13 @@ export default function DefectAnalysisPage() {
   };
 
   const filterRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ─── 点击外部关闭筛选 ─── */
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
         setOpenFilterField(null);
+        setFilterPos(null);
       }
     };
     if (openFilterField) document.addEventListener('mousedown', handler);
@@ -354,7 +364,80 @@ export default function DefectAnalysisPage() {
     setEditingRecord(r);
     setFormData({ ...r });
     setShowForm(true);
+    // 重置新图片状态
+    newImages.forEach(img => URL.revokeObjectURL(img.preview));
+    setNewImages([]);
   };
+
+  /* ─── 图片选择与上传 ─── */
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || !editingRecord?.workOrderNo) return;
+    const added: typeof newImages = [];
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) continue;
+      const id = Math.random().toString(36).slice(2, 9);
+      added.push({
+        id,
+        file,
+        caption: file.name.replace(/\.[^.]+$/, ''),
+        preview: URL.createObjectURL(file),
+      });
+    }
+    setNewImages(prev => [...prev, ...added]);
+    e.target.value = '';
+  };
+
+  const handleRemoveNewImage = (id: string) => {
+    setNewImages(prev => {
+      const item = prev.find(i => i.id === id);
+      if (item) URL.revokeObjectURL(item.preview);
+      return prev.filter(i => i.id !== id);
+    });
+  };
+
+  const handleUpdateCaption = (id: string, caption: string) => {
+    setNewImages(prev => prev.map(i => (i.id === id ? { ...i, caption } : i)));
+  };
+
+  /** 将新图片转为 base64 并调用 API 上传 */
+  const uploadNewImages = async (): Promise<boolean> => {
+    if (!newImages.length || !editingRecord?.workOrderNo) return true;
+    setUploading(true);
+    try {
+      const imagesData = await Promise.all(
+        newImages.map(async img => ({
+          name: img.file.name,
+          data: await fileToBase64(img.file),
+        }))
+      );
+      const res = await fetch('/api/upload-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ album: editingRecord.workOrderNo, images: imagesData }),
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Upload failed');
+      newImages.forEach(img => URL.revokeObjectURL(img.preview));
+      setNewImages([]);
+      showToast(`成功添加 ${result.files.length} 张图片`);
+      return true;
+    } catch (err) {
+      showToast(`图片上传失败: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      return false;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
   const handleSaveRecord = async () => {
     if (!activeSheetId) return;
@@ -384,6 +467,8 @@ export default function DefectAnalysisPage() {
       const { error } = await supabase.from('defect_records').update(dbRow).eq('id', row.id);
       if (error) { showToast('保存失败', 'error'); return; }
       setSheetRecords(prev => prev.map(r => r.id === row.id ? row : r));
+      // 上传新图片
+      await uploadNewImages();
       showToast('已更新');
     } else {
       const { error } = await supabase.from('defect_records').insert(dbRow);
@@ -526,7 +611,7 @@ export default function DefectAnalysisPage() {
         value={str(formData[field])}
         onChange={e => setFormData(prev => ({ ...prev, [field]: e.target.value }))}
         placeholder={placeholder}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
       />
       <datalist id={listId}>
         {getFieldOptions(field).map(v => <option key={v} value={v} />)}
@@ -542,7 +627,7 @@ export default function DefectAnalysisPage() {
   if (sheetLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-600" />
       </div>
     );
   }
@@ -573,7 +658,7 @@ export default function DefectAnalysisPage() {
                   value={editingSheetName}
                   onChange={e => setEditingSheetName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleRenameSheet(); if (e.key === 'Escape') setEditingSheetId(null); }}
-                  className="w-28 text-sm px-2 py-1 border border-indigo-300 rounded focus:outline-none"
+                  className="w-28 text-sm px-2 py-1 border border-slate-300 rounded focus:outline-none"
                   autoFocus
                 />
                 <button onClick={handleRenameSheet} className="text-green-600 hover:text-green-700 text-xs font-medium">✓</button>
@@ -584,7 +669,7 @@ export default function DefectAnalysisPage() {
                 onClick={() => { setActiveSheetId(s.id); setFilterValues({}); setSortField(null); }}
                 onDoubleClick={() => { setEditingSheetId(s.id); setEditingSheetName(s.name); }}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  activeSheetId === s.id ? 'bg-indigo-600 text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  activeSheetId === s.id ? 'bg-slate-700 text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 {s.name}
@@ -612,10 +697,10 @@ export default function DefectAnalysisPage() {
             onChange={e => setNewSheetName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleCreateSheet(); }}
             placeholder="新工作表名..."
-            className="w-28 text-sm px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="w-28 text-sm px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300"
           />
           <button onClick={handleCreateSheet}
-            className="px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm hover:bg-indigo-100 transition-colors font-medium">
+            className="px-2.5 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200 transition-colors font-medium">
             + 新建
           </button>
         </div>
@@ -625,7 +710,7 @@ export default function DefectAnalysisPage() {
       {activeSheetId && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <button onClick={openNewForm}
-            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 shadow-sm">
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 shadow-sm">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
@@ -667,14 +752,14 @@ export default function DefectAnalysisPage() {
       {activeSheetId ? (
         recordLoading ? (
           <div className="flex items-center justify-center h-40">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600" />
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-600" />
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-200 bg-white" ref={filterRef}>
             <table className="min-w-full text-sm border-collapse">
               <thead>
                 {/* 第一行：主表头（含分组）*/}
-                <tr className="bg-indigo-600 text-white">
+                <tr className="bg-slate-700 text-white">
                   {[
                     { label: '日期', field: 'entryDate', rowSpan: 2, colSpan: 1 },
                     { label: '序号', field: 'seq', rowSpan: 2, colSpan: 1 },
@@ -689,16 +774,16 @@ export default function DefectAnalysisPage() {
                       key={col.field}
                       rowSpan={col.rowSpan}
                       colSpan={col.colSpan}
-                      className="px-2 py-2 text-left font-semibold text-xs whitespace-nowrap border-r border-indigo-500 cursor-pointer select-none"
+                      className="px-2 py-2 text-left font-semibold text-xs whitespace-nowrap border-r border-slate-500 cursor-pointer select-none relative"
                       onClick={() => handleSort(col.field as keyof DefectAnalysisRecord)}
                     >
                       <div className="flex items-center gap-1">
                         <span>{col.label}</span>
                         {/* 筛选按钮 */}
                         <button
-                          className={`p-0.5 rounded hover:bg-indigo-500 ${
-                            filterValues[col.field]?.size ? 'text-yellow-300' : 'text-indigo-200'}`}
-                          onClick={e => { e.stopPropagation(); setOpenFilterField(openFilterField === col.field ? null : col.field); }}
+                          className={`p-0.5 rounded hover:bg-slate-600 ${
+                            filterValues[col.field]?.size ? 'text-amber-400' : 'text-slate-300'}`}
+                          onClick={e => { e.stopPropagation(); const btn = e.currentTarget; const r = btn.getBoundingClientRect(); setOpenFilterField(openFilterField === col.field ? null : col.field); setFilterPos({ top: r.bottom + 4, left: r.left }); }}
                         >
                           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-1.447.894l-4-2A1 1 0 017 15V10.414L3.293 6.707A1 1 0 013 6V3z" />
@@ -709,15 +794,15 @@ export default function DefectAnalysisPage() {
                         )}
                         {/* 筛选下拉 */}
                         {openFilterField === col.field && (
-                          <div className="absolute z-30 bg-white border border-gray-200 rounded-xl shadow-2xl w-52 h-64 mt-1 top-full left-0"
-                            style={{ position: 'absolute' }}
+                          <div className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-2xl w-52"
+                            style={{ top: filterPos?.top ?? 0, left: filterPos?.left ?? 0 }}
                             onClick={e => e.stopPropagation()}>
                             <FilterDropdown
                               fieldKey={col.field}
                               uniqueVals={getUniqueVals(col.field as keyof DefectAnalysisRecord)}
                               selected={filterValues[col.field] ?? new Set()}
                               onChange={(f, s) => setFilterValues(prev => ({ ...prev, [f]: s }))}
-                              onClose={() => setOpenFilterField(null)}
+                              onClose={() => { setOpenFilterField(null); setFilterPos(null); }}
                             />
                           </div>
                         )}
@@ -725,7 +810,7 @@ export default function DefectAnalysisPage() {
                     </th>
                   ))}
                   {/* 异常详情（跨 4 列）*/}
-                  <th colSpan={4} className="px-2 py-2 text-center font-semibold text-xs border-r border-indigo-500">
+                  <th colSpan={4} className="px-2 py-2 text-center font-semibold text-xs border-r border-slate-500">
                     异常详情
                   </th>
                   {[
@@ -733,7 +818,7 @@ export default function DefectAnalysisPage() {
                     { label: '备注', field: 'notes' },
                   ].map(col => (
                     <th key={col.field} rowSpan={2}
-                      className="px-2 py-2 text-left font-semibold text-xs whitespace-nowrap border-r border-indigo-500 cursor-pointer select-none"
+                      className="px-2 py-2 text-left font-semibold text-xs whitespace-nowrap border-r border-slate-500 cursor-pointer select-none"
                       onClick={() => handleSort(col.field as keyof DefectAnalysisRecord)}
                     >
                       {col.label}
@@ -742,7 +827,7 @@ export default function DefectAnalysisPage() {
                   <th rowSpan={2} className="px-2 py-2 text-center font-semibold text-xs whitespace-nowrap">操作</th>
                 </tr>
                 {/* 第二行：异常详情子表头 */}
-                <tr className="bg-indigo-500 text-white">
+                <tr className="bg-slate-600 text-white">
                   {[
                     { label: '充电数量', field: 'chargeQty' },
                     { label: '不良数', field: 'defectQty' },
@@ -750,15 +835,15 @@ export default function DefectAnalysisPage() {
                     { label: '不良品反充不良数', field: 'defectRechargeDefect' },
                   ].map(col => (
                     <th key={col.field}
-                      className="px-2 py-1.5 text-left text-xs whitespace-nowrap border-r border-indigo-400 cursor-pointer select-none"
+                      className="px-2 py-1.5 text-left text-xs whitespace-nowrap border-r border-slate-500 cursor-pointer select-none relative"
                       onClick={() => handleSort(col.field as keyof DefectAnalysisRecord)}
                     >
                       <div className="flex items-center gap-1">
                         <span>{col.label}</span>
                         {/* 筛选按钮 */}
                         <button
-                          className={`p-0.5 rounded hover:bg-indigo-400 ${filterValues[col.field]?.size ? 'text-yellow-300' : 'text-indigo-200'}`}
-                          onClick={e => { e.stopPropagation(); setOpenFilterField(openFilterField === col.field ? null : col.field); }}
+                          className={`p-0.5 rounded hover:bg-slate-500 ${filterValues[col.field]?.size ? 'text-amber-400' : 'text-slate-300'}`}
+                          onClick={e => { e.stopPropagation(); const btn = e.currentTarget; const r = btn.getBoundingClientRect(); setOpenFilterField(openFilterField === col.field ? null : col.field); setFilterPos({ top: r.bottom + 4, left: r.left }); }}
                         >
                           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-1.447.894l-4-2A1 1 0 017 15V10.414L3.293 6.707A1 1 0 013 6V3z" />
@@ -766,14 +851,15 @@ export default function DefectAnalysisPage() {
                         </button>
                         {sortField === col.field && <span>{sortDir === 'asc' ? '↑' : '↓'}</span>}
                         {openFilterField === col.field && (
-                          <div className="absolute z-30 bg-white border border-gray-200 rounded-xl shadow-2xl w-52 h-64 mt-1 top-full left-0"
-                            style={{ position: 'absolute' }} onClick={e => e.stopPropagation()}>
+                          <div className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-2xl w-52"
+                            style={{ top: filterPos?.top ?? 0, left: filterPos?.left ?? 0 }}
+                            onClick={e => e.stopPropagation()}>
                             <FilterDropdown
                               fieldKey={col.field}
                               uniqueVals={getUniqueVals(col.field as keyof DefectAnalysisRecord)}
                               selected={filterValues[col.field] ?? new Set()}
                               onChange={(f, s) => setFilterValues(prev => ({ ...prev, [f]: s }))}
-                              onClose={() => setOpenFilterField(null)}
+                              onClose={() => { setOpenFilterField(null); setFilterPos(null); }}
                             />
                           </div>
                         )}
@@ -787,17 +873,17 @@ export default function DefectAnalysisPage() {
                   <tr
                     key={r.id}
                     onDoubleClick={() => handleRowDoubleClick(r)}
-                    className={`border-b border-gray-100 hover:bg-indigo-50 transition-colors cursor-pointer
+                    className={`border-b border-gray-100 hover:bg-slate-50 transition-colors cursor-pointer
                       ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
                   >
-                    <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap">{r.entryDate}</td>
-                    <td className="px-2 py-1.5 text-gray-600">{r.seq}</td>
-                    <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap">{r.workOrderNo}</td>
-                    <td className="px-2 py-1.5 text-gray-700">{r.specSize}</td>
-                    <td className="px-2 py-1.5 text-gray-700">{r.foilSupplier}</td>
-                    <td className="px-2 py-1.5 text-gray-700">{r.foilVoltage}</td>
-                    <td className="px-2 py-1.5 text-gray-700">{r.foilBatchNo}</td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap text-center">{r.entryDate}</td>
+                    <td className="px-2 py-1.5 text-gray-600 text-center">{r.seq}</td>
+                    <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap text-center">{r.workOrderNo}</td>
+                    <td className="px-2 py-1.5 text-gray-700 text-center">{r.specSize}</td>
+                    <td className="px-2 py-1.5 text-gray-700 text-center">{r.foilSupplier}</td>
+                    <td className="px-2 py-1.5 text-gray-700 text-center">{r.foilVoltage}</td>
+                    <td className="px-2 py-1.5 text-gray-700 text-center">{r.foilBatchNo}</td>
+                    <td className="px-2 py-1.5 text-center">
                       {r.faultJudgment && (
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium
                           ${r.faultJudgment.includes('供应商') ? 'bg-red-100 text-red-700' :
@@ -807,15 +893,15 @@ export default function DefectAnalysisPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{formatNum(r.chargeQty)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{formatNum(r.defectQty)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{formatNum(r.goodRechargeDefect)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{formatNum(r.defectRechargeDefect)}</td>
-                    <td className="px-2 py-1.5 text-gray-600 max-w-[200px] truncate" title={r.defectCause}>{r.defectCause}</td>
-                    <td className="px-2 py-1.5 text-gray-500 max-w-[120px] truncate" title={r.notes}>{r.notes}</td>
+                    <td className="px-2 py-1.5 text-center tabular-nums">{formatNum(r.chargeQty)}</td>
+                    <td className="px-2 py-1.5 text-center tabular-nums">{formatNum(r.defectQty)}</td>
+                    <td className="px-2 py-1.5 text-center tabular-nums">{formatNum(r.goodRechargeDefect)}</td>
+                    <td className="px-2 py-1.5 text-center tabular-nums">{formatNum(r.defectRechargeDefect)}</td>
+                    <td className="px-2 py-1.5 text-gray-600 max-w-[200px] truncate text-center" title={r.defectCause}>{r.defectCause}</td>
+                    <td className="px-2 py-1.5 text-gray-500 max-w-[120px] truncate text-center" title={r.notes}>{r.notes}</td>
                     <td className="px-2 py-1.5 text-center whitespace-nowrap">
                       <button onClick={() => openEditForm(r)}
-                        className="text-indigo-500 hover:text-indigo-700 text-xs mr-2 font-medium">编辑</button>
+                        className="text-emerald-600 hover:text-emerald-700 text-xs mr-2 font-medium">编辑</button>
                       {deleteConfirmId === r.id ? (
                         <>
                           <button onClick={() => handleDeleteRecord(r.id)}
@@ -845,14 +931,14 @@ export default function DefectAnalysisPage() {
                 )}
                 {/* 汇总行 */}
                 {displayRows.length > 0 && (
-                  <tr className="bg-indigo-50 font-semibold text-sm border-t-2 border-indigo-200">
-                    <td colSpan={8} className="px-3 py-2 text-indigo-700">
+                  <tr className="bg-slate-50 font-semibold text-sm border-t-2 border-slate-300">
+                    <td colSpan={8} className="px-3 py-2 text-slate-700">
                       汇总（{sum.count} 条）
                     </td>
-                    <td className="px-2 py-2 text-right tabular-nums text-indigo-800">{formatNum(sum.totalChargeQty)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums text-indigo-800">{formatNum(sum.totalDefectQty)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums text-indigo-800">{formatNum(sum.totalGoodRecharge)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums text-indigo-800">{formatNum(sum.totalDefectRecharge)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-800">{formatNum(sum.totalChargeQty)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-800">{formatNum(sum.totalDefectQty)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-800">{formatNum(sum.totalGoodRecharge)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-800">{formatNum(sum.totalDefectRecharge)}</td>
                     <td colSpan={3} />
                   </tr>
                 )}
@@ -872,8 +958,7 @@ export default function DefectAnalysisPage() {
 
       {/* 新增 / 编辑弹窗 */}
       {showForm && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b">
@@ -897,7 +982,7 @@ export default function DefectAnalysisPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">日期</label>
                 <input type="date" value={formData.entryDate}
                   onChange={e => setFormData(prev => ({ ...prev, entryDate: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 />
               </div>
               <div>
@@ -905,7 +990,7 @@ export default function DefectAnalysisPage() {
                 <input type="text" value={formData.seq}
                   onChange={e => setFormData(prev => ({ ...prev, seq: e.target.value }))}
                   placeholder="序号"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 />
               </div>
               <div>
@@ -952,7 +1037,7 @@ export default function DefectAnalysisPage() {
                   <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
                   <input type="number" min={0} value={formData[field]}
                     onChange={e => setFormData(prev => ({ ...prev, [field]: Number(e.target.value) || 0 }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                   />
                 </div>
               ))}
@@ -966,7 +1051,7 @@ export default function DefectAnalysisPage() {
                 <textarea value={formData.defectCause}
                   onChange={e => setFormData(prev => ({ ...prev, defectCause: e.target.value }))}
                   rows={3} placeholder="输入不良原因分析..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none"
                 />
               </div>
               <div className="col-span-2">
@@ -974,9 +1059,88 @@ export default function DefectAnalysisPage() {
                 <textarea value={formData.notes}
                   onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                   rows={2} placeholder="备注（可选）"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none"
                 />
               </div>
+
+              {/* 相册图片 — 仅编辑模式显示 */}
+              {editingRecord?.workOrderNo && (
+                <div className="col-span-2">
+                  <div className="flex items-center justify-between mb-3 mt-3">
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                      📷 相册图片 · {editingRecord.workOrderNo}
+                      {albums[editingRecord.workOrderNo] && `（${albums[editingRecord.workOrderNo].images.length + newImages.length} 张）`}
+                    </h3>
+                    <button type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      添加图片
+                    </button>
+                    <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleImageSelect} />
+                  </div>
+
+                  {/* 已有图片 */}
+                  {albums[editingRecord.workOrderNo] && albums[editingRecord.workOrderNo].images.length > 0 && (
+                    <div className="grid grid-cols-4 gap-3 mb-3">
+                      {albums[editingRecord.workOrderNo].images.map((img, idx) => (
+                        <button key={img.src} type="button"
+                          onClick={() => setLightboxImg({ src: img.src, caption: img.caption, idx, list: albums[editingRecord!.workOrderNo].images })}
+                          className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50 hover:border-emerald-400 hover:shadow-md transition-all cursor-zoom-in">
+                          <img src={img.src} alt={img.caption || ''} loading="lazy"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                          {img.caption && (
+                            <div className="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[10px] px-1.5 py-0.5 truncate">
+                              {img.caption}
+                            </div>
+                          )}
+                          <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px]">
+                            🔍
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 新增图片预览 */}
+                  {newImages.length > 0 && (
+                    <>
+                      <div className="text-[11px] font-medium text-emerald-600 mb-2 flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        待保存 · {newImages.length} 张新图片（点击保存后自动上传）
+                      </div>
+                      <div className="space-y-2 p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                        {newImages.map(img => (
+                          <div key={img.id} className="flex items-center gap-3 p-2 bg-white rounded-lg border border-emerald-100">
+                            <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border-2 border-dashed border-emerald-300">
+                              <img src={img.preview} alt="" className="w-full h-full object-cover" />
+                              <span className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-emerald-500 text-white text-[9px] font-bold rounded-full">NEW</span>
+                            </div>
+                            <input type="text" value={img.caption}
+                              onChange={e => handleUpdateCaption(img.id, e.target.value)}
+                              placeholder="输入图片标题..."
+                              className="flex-1 min-w-0 text-sm px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-300"
+                            />
+                            <span className="text-[10px] text-gray-400 flex-shrink-0">{(img.file.size / 1024).toFixed(0)}KB</span>
+                            <button type="button" onClick={() => handleRemoveNewImage(img.id)}
+                              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors flex-shrink-0">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {!albums[editingRecord.workOrderNo] && newImages.length === 0 && (
+                    <p className="text-xs text-gray-400 italic text-center py-4">该流转单号暂无相册，点击上方「添加图片」创建</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 p-5 border-t bg-gray-50 rounded-b-2xl">
@@ -985,9 +1149,67 @@ export default function DefectAnalysisPage() {
                 取消
               </button>
               <button onClick={handleSaveRecord}
-                className="px-6 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 shadow-sm">
+                className="px-6 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 shadow-sm">
                 {editingRecord ? '保存修改' : '确认新增'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 图片灯箱 */}
+      {lightboxImg && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center"
+          onClick={e => { if (e.target === e.currentTarget) setLightboxImg(null); }}>
+          <div className="relative max-w-4xl w-full mx-4 flex flex-col items-center" onClick={e => e.stopPropagation()}>
+            {/* 关闭按钮 */}
+            <button onClick={() => setLightboxImg(null)}
+              className="absolute -top-10 right-0 text-white/70 hover:text-white text-sm font-medium flex items-center gap-1">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              关闭
+            </button>
+            {/* 左右切换按钮 */}
+            {lightboxImg.idx > 0 && (
+              <button onClick={() => {
+                const prev = lightboxImg.list[lightboxImg.idx - 1];
+                setLightboxImg({ ...prev, idx: lightboxImg.idx - 1, list: lightboxImg.list });
+              }}
+                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-12 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
+            {lightboxImg.idx < lightboxImg.list.length - 1 && (
+              <button onClick={() => {
+                const next = lightboxImg.list[lightboxImg.idx + 1];
+                setLightboxImg({ ...next, idx: lightboxImg.idx + 1, list: lightboxImg.list });
+              }}
+                className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-12 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
+            {/* 大图 */}
+            <img src={lightboxImg.src} alt={lightboxImg.caption || ''}
+              className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-2xl" />
+            {/* 标题 */}
+            <p className="mt-3 text-white/90 text-sm font-medium">{lightboxImg.caption || ''}</p>
+            {/* 缩略图条 */}
+            <div className="flex gap-2 mt-3 overflow-x-auto pb-1 max-w-full px-4">
+              {lightboxImg.list.map((img, i) => (
+                <button key={img.src} type="button"
+                  onClick={() => setLightboxImg({ ...img, idx: i, list: lightboxImg.list })}
+                  className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
+                    i === lightboxImg.idx ? 'border-emerald-400 shadow-lg' : 'border-white/20 opacity-60 hover:opacity-100'
+                  }`}>
+                  <img src={img.src} alt={img.caption || ''} loading="lazy"
+                    className="w-full h-full object-cover" />
+                </button>
+              ))}
             </div>
           </div>
         </div>

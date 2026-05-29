@@ -9,3 +9,11 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 }
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ─── 可靠性实验数据库（另一个 Supabase 项目）───
+const RELIABILITY_URL = import.meta.env.VITE_RELIABILITY_URL as string;
+const RELIABILITY_ANON_KEY = import.meta.env.VITE_RELIABILITY_ANON_KEY as string;
+
+export const reliabilityDb = (RELIABILITY_URL && RELIABILITY_ANON_KEY)
+  ? createClient(RELIABILITY_URL, RELIABILITY_ANON_KEY)
+  : supabase;

@@ -84,3 +84,28 @@ export interface ProductionRecord {
   // 批注（格式：{ "fieldName": "批注内容" }）
   comments?: Record<string, string>;
 }
+
+// 可靠性实验记录（另一个 Supabase 项目 - records 表）
+export interface ReliabilityTestRecord {
+  id: string;
+  series: string;           // 系列/料号
+  capacity: string;         // 容量
+  voltage: string;          // 电压
+  spec: string;             // 规格
+  five_days: string;        // 5天数据
+  note: string;             // 备注
+  selected_hours: unknown;  // 选定测试时间 (JSON)
+  create_time: string;      // 创建时间
+  update_time: string;      // 更新时间
+  batch_no: string;         // 批号
+  positive_foil: string;    // 正箔
+  negative_foil: string;    // 负箔
+  electrolyte_paper: string;// 电解纸
+  electrolyte: string;      // 电解液
+  bakelite_cover: string;   // 酚醛盖板
+  status: string;           // 状态
+  fail_reason: string;      // 失败原因
+  shelf_no: string;         // 货架号
+  time_adjust: unknown;     // 时间调整 (JSON)
+  start_time: string;       // 开始时间
+}

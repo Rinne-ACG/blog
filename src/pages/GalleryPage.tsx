@@ -17,7 +17,7 @@ import { useState } from 'react';
 //
 // 4. 如需新增相册，仿照下方格式继续添加即可
 // ============================================================
-const albums: Record<string, {
+export const albums: Record<string, {
   title: string;
   description: string;
   cover: string;

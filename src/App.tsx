@@ -11,6 +11,7 @@ import BoltStatsPage from './pages/BoltStatsPage';
 import LoginPage from './pages/LoginPage';
 import DefectAnalysisPage from './pages/DefectAnalysisPage';
 import ImageToExcelPage from './pages/ImageToExcelPage';
+import ReliabilityTestPage from './pages/ReliabilityTestPage';
 
 /* ═══════════════════════════════════════════════════
    路由守卫：未登录 → 踢到 /login
@@ -91,6 +92,14 @@ export default function App() {
               element={
                 <AuthGuard>
                   <ImageToExcelPage />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/reliability-test"
+              element={
+                <AuthGuard>
+                  <ReliabilityTestPage />
                 </AuthGuard>
               }
             />
