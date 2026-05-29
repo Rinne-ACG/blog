@@ -9,6 +9,7 @@ import GalleryPage from './pages/GalleryPage';
 import StatsPage from './pages/StatsPage';
 import BoltStatsPage from './pages/BoltStatsPage';
 import LoginPage from './pages/LoginPage';
+import DefectAnalysisPage from './pages/DefectAnalysisPage';
 import ImageToExcelPage from './pages/ImageToExcelPage';
 
 /* ═══════════════════════════════════════════════════
@@ -74,6 +75,14 @@ export default function App() {
               element={
                 <AuthGuard>
                   <GalleryPage />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/defect-analysis"
+              element={
+                <AuthGuard>
+                  <DefectAnalysisPage />
                 </AuthGuard>
               }
             />

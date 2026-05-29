@@ -15,6 +15,27 @@ export interface Tag {
   count: number;
 }
 
+// 不良分析记录
+export interface DefectAnalysisRecord {
+  id: string;
+  entryDate: string;         // 日期
+  seq: string;               // 序号
+  workOrderNo: string;       // 流转单号
+  specSize: string;          // 规格尺寸
+  foilSupplier: string;      // 正箔供应商
+  foilVoltage: string;       // 正箔电压
+  foilBatchNo: string;       // 正箔批号
+  faultJudgment: string;     // 异常责任判定
+  // 异常详情
+  chargeQty: number;         // 充电数量
+  defectQty: number;         // 不良数
+  goodRechargeDefect: number;  // 良品反充不良数
+  defectRechargeDefect: number; // 不良品反充不良数
+  // 分析
+  defectCause: string;       // 不良原因分析
+  notes: string;             // 备注
+}
+
 // 生产良率记录（牛角车间）
 export interface ProductionRecord {
   id: string;
