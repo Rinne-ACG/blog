@@ -272,6 +272,7 @@ interface UpcomingItem {
   record: ReliabilityTestRecord;
   pickupMs: number;
   pickupTime: string;
+  pickupHour: number; // 对应的试验时间点（小时）
 }
 
 export default function ReliabilityTestPage() {
@@ -372,17 +373,27 @@ export default function ReliabilityTestPage() {
   const threeDaysLaterMs = nowMs + 3 * 86400000;
 
   const upcomingPickups: UpcomingItem[] = (() => {
-    return records
-      .map(r => {
-        const ta = parseTimeAdjust(r.time_adjust);
-        const pickup = getActivePickupTime(r.start_time, r.selected_hours, ta);
-        if (!pickup.active) return null;
-        const ms = new Date(pickup.active).getTime();
-        if (isNaN(ms) || ms < nowMs || ms > threeDaysLaterMs) return null;
-        return { record: r, pickupMs: ms, pickupTime: pickup.active as string };
-      })
-      .filter(Boolean as any)
-      .sort((a, b) => a.pickupMs - b.pickupMs);
+    const result: UpcomingItem[] = [];
+    records.forEach(r => {
+      const ta = parseTimeAdjust(r.time_adjust);
+      const ms = adjustToMs(ta);
+      if (!r.start_time || !Array.isArray(r.selected_hours) || r.selected_hours.length === 0) return;
+      const start = new Date(r.start_time).getTime();
+      if (isNaN(start)) return;
+      for (const h of (r.selected_hours as number[]).sort((a, b) => a - b)) {
+        const pickupMs = start + h * 3600000 + ms;
+        if (isNaN(pickupMs)) continue;
+        if (pickupMs < nowMs || pickupMs > threeDaysLaterMs) continue;
+        result.push({
+          record: r,
+          pickupMs,
+          pickupTime: new Date(pickupMs).toISOString(),
+          pickupHour: h,
+        });
+        break; // 只取最近的那个即将到期时间点
+      }
+    });
+    return result.sort((a, b) => a.pickupMs - b.pickupMs);
   })();
 
   /* ─── 筛选 + 排序 + 搜索 ─── */
@@ -705,22 +716,26 @@ export default function ReliabilityTestPage() {
 
                   {/* 核心信息 */}
                   <div className="space-y-0.5 text-xs">
-                    <p className="font-bold text-gray-800 truncate" title={r.series || ''}>
-                      📦 {r.series || '-'}
+                    <p className="font-bold text-gray-800 truncate" title={r.test_no || ''}>
+                      🔬 试验编号：{r.test_no || '-'}
+                    </p>
+                    <p className="text-gray-600 truncate" title={r.equipment || ''}>
+                      🖥️ 试验设备：{r.equipment || '-'}
+                    </p>
+                    <p className="text-gray-600 truncate" title={r.series || ''}>
+                      📦 系列：{r.series || '-'}
                     </p>
                     <p className="text-gray-600 truncate" title={r.spec || ''}>
                       📐 规格：{r.spec || '-'}
                     </p>
-                    {r.batch_no && (
-                      <p className="text-gray-500 truncate" title={r.batch_no}>
-                        🏷️ 批号：{r.batch_no}
-                      </p>
-                    )}
                     {r.shelf_no && (
                       <p className="text-gray-500 truncate">
                         📍 排架：{r.shelf_no}
                       </p>
                     )}
+                    <p className="text-xs font-bold text-amber-700">
+                      ⏱️ 本次取货：{item.pickupHour}H
+                    </p>
                   </div>
 
                   {/* 取货时间（最重要） */}
