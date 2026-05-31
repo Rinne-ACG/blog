@@ -12,36 +12,30 @@ interface ColumnDef {
   colSpan?: number;
 }
 
-/** 主表头列（不含系统字段） */
+/** 主表头列（表格中直接展示的字段） */
 const MAIN_COLUMNS: ColumnDef[] = [
+  { field: 'test_no', label: '试验编号' },
+  { field: 'equipment', label: '试验设备' },
   { field: 'series', label: '系列' },
   { field: 'capacity', label: '容量' },
   { field: 'voltage', label: '电压' },
   { field: 'spec', label: '规格' },
-  { field: 'batch_no', label: '批号' },
-  { field: 'positive_foil', label: '正箔' },
-  { field: 'negative_foil', label: '负箔' },
-  { field: 'electrolyte_paper', label: '电解纸' },
-  { field: 'electrolyte', label: '电解液' },
-  { field: 'bakelite_cover', label: '酚醛盖板' },
-  { field: 'shelf_no', label: '货架号' },
-  { field: 'status', label: '状态' },
-  { field: 'fail_reason', label: '失败原因' },
-  { field: 'five_days', label: '5天数据' },
-  { field: 'start_time', label: '开始时间' },
+  { field: 'shelf_no', label: '排架' },
+  { field: 'selected_hours', label: '选定测试时间' },
   { field: 'note', label: '备注' },
 ];
 
-/** 表单字段（排除系统字段和 JSON 字段） */
-const FORM_FIELDS: (keyof ReliabilityTestRecord)[] = [
-  'series', 'capacity', 'voltage', 'spec', 'batch_no',
-  'positive_foil', 'negative_foil', 'electrolyte_paper',
-  'electrolyte', 'bakelite_cover', 'shelf_no',
-  'status', 'fail_reason', 'five_days', 'start_time', 'note',
+/** 编辑表单中额外显示的详情字段（点击编辑时才可见） */
+const DETAIL_FIELDS: (keyof ReliabilityTestRecord)[] = [
+  'batch_no', 'positive_foil', 'negative_foil',
+  'electrolyte_paper', 'electrolyte', 'bakelite_cover',
 ];
+
 
 /** 字段中文标签映射 */
 const FIELD_LABELS: Record<string, string> = {
+  test_no: '试验编号',
+  equipment: '试验设备',
   series: '系列',
   capacity: '容量',
   voltage: '电压',
@@ -51,8 +45,8 @@ const FIELD_LABELS: Record<string, string> = {
   negative_foil: '负箔',
   electrolyte_paper: '电解纸',
   electrolyte: '电解液',
-  bakelite_cover: '酚醛盖板',
-  shelf_no: '货架号',
+  bakelite_cover: '电木盖',
+  shelf_no: '排架',
   status: '状态',
   fail_reason: '失败原因',
   five_days: '5天数据',
@@ -203,8 +197,7 @@ export default function ReliabilityTestPage() {
   const loadRecords = async () => {
     setLoading(true);
     try {
-      let query = reliabilityDb.from(TABLE).select('*').order('create_time', { ascending: false });
-      const { data, error } = await query;
+      const { data, error } = await reliabilityDb.from(TABLE).select('*').order('create_time', { ascending: false });
       if (error) throw error;
       setRecords(data || []);
     } catch (err) {
@@ -297,6 +290,8 @@ export default function ReliabilityTestPage() {
     try {
       const now = new Date().toISOString();
       const row: Record<string, unknown> = {
+        test_no: formData.test_no || '',
+        equipment: formData.equipment || '',
         series: formData.series || '',
         capacity: formData.capacity || '',
         voltage: formData.voltage || '',
@@ -374,7 +369,6 @@ export default function ReliabilityTestPage() {
 
   /* ─── Excel 导入导出 ─── */
   const handleExportExcel = async () => {
-    // 动态导入 SheetJS
     const XLSX = await import('xlsx');
     const exportData = filteredAndSorted.map(r => {
       const row: Record<string, unknown> = {};
@@ -410,11 +404,10 @@ export default function ReliabilityTestPage() {
         return;
       }
 
-      // 标签匹配：支持中英文标签
       const reverseLabels: Record<string, string> = {};
       Object.entries(FIELD_LABELS).forEach(([en, zh]) => {
         reverseLabels[zh] = en;
-        });
+      });
 
       const now = new Date().toISOString();
       let added = 0;
@@ -425,8 +418,8 @@ export default function ReliabilityTestPage() {
           if (!val || (typeof val === 'string' && !val.trim())) continue;
           const cleanVal = String(val).trim();
           const key = reverseLabels[label] || (label in FIELD_LABELS ? label : null);
-          if (key && key in (formData || {})) {
-            mapped[key as keyof ReliabilityTestRecord] = cleanVal;
+          if (key) {
+            (mapped as Record<string, unknown>)[key] = cleanVal;
           }
         }
 
@@ -510,7 +503,7 @@ export default function ReliabilityTestPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-600" />
         </div>
       ) : (
-        <>
+        <div className="space-y-4">
           {/* 数据表格 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto">
@@ -553,7 +546,7 @@ export default function ReliabilityTestPage() {
                 <tbody>
                   {paginatedData.length > 0 ? paginatedData.map(r => (
                     <tr key={r.id}
-                      className={`border-b border-gray-100 hover:bg-slate-50 transition-colors cursor-pointer`}
+                      className="border-b border-gray-100 hover:bg-slate-50 transition-colors cursor-pointer"
                       onClick={() => handleRowClick(r)}
                     >
                       <td className="px-3 py-1.5 whitespace-nowrap sticky left-0 bg-white z-10" onClick={e => e.stopPropagation()}>
@@ -563,16 +556,17 @@ export default function ReliabilityTestPage() {
                           className="text-red-500 hover:text-red-700 text-xs font-medium">删除</button>
                       </td>
                       {MAIN_COLUMNS.map(col => {
-                        const val = r[col.field];
-                        const display = col.field === 'start_time' ? formatTime(val as string | null | undefined)
-                          : col.field === 'five_days' ? (val ? String(val) : '-')
-                          : (val == null ? '-' : String(val));
+                        const rawVal = r[col.field];
+                        const display = col.field === 'start_time' ? formatTime(rawVal as string | null | undefined)
+                          : col.field === 'five_days' ? (rawVal ? String(rawVal) : '-')
+                          : col.field === 'selected_hours' ? (rawVal ? JSON.stringify(rawVal) : '-')
+                          : (rawVal == null ? '-' : String(rawVal));
                         return (
                           <td key={col.field}
                             className={`px-2 py-1.5 text-gray-700 whitespace-nowrap text-center ${
                               col.field === 'note' ? 'max-w-[150px] truncate' : ''
                             }`}
-                            title={typeof val === 'string' && val?.length > 30 ? val : ''}
+                            title={typeof rawVal === 'string' && rawVal?.length > 30 ? rawVal : ''}
                           >{display}</td>
                         );
                       })}
@@ -610,7 +604,7 @@ export default function ReliabilityTestPage() {
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
 
       {/* ─── 新增/编辑弹窗 ─── */}
@@ -627,37 +621,100 @@ export default function ReliabilityTestPage() {
               </button>
             </div>
 
-            <div className="p-6 grid grid-cols-2 gap-x-5 gap-y-4">
-              {FORM_FIELDS.map(field => (
-                <div key={field}>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">{FIELD_LABELS[field] || field}</label>
-                  {field === 'note' ? (
-                    <textarea
-                      value={(formData[field] as string) || ''} onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
-                      rows={2} placeholder={`${FIELD_LABELS[field] || field}（可选）`}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none"
-                    />
-                  ) : field === 'start_time' ? (
-                    <input
-                      type="datetime-local"
-                      value={
-                        (formData[field] as string)?.slice(0, 16)
-                          || new Date().toISOString().slice(0, 16)
-                      }
-                      onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      value={(formData[field] as string) || ''}
-                      onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
-                      placeholder={`输入${FIELD_LABELS[field] || field}`}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                    />
-                  )}
+            <div className="p-6 space-y-4">
+              {/* 主字段 */}
+              <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+                {MAIN_COLUMNS.map(col => {
+                  const field = col.field;
+                  return (
+                    <div key={field}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{FIELD_LABELS[field] || field}</label>
+                      {field === 'note' ? (
+                        <textarea
+                          value={(formData as Record<string, unknown>)[field] as string || ''} onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
+                          rows={2} placeholder={`${FIELD_LABELS[field] || field}（可选）`}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none"
+                        />
+                      ) : field === 'start_time' ? (
+                        <input
+                          type="datetime-local"
+                          value={
+                            (formData[field] as string)?.slice(0, 16)
+                              || new Date().toISOString().slice(0, 16)
+                          }
+                          onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
+                          className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                        />
+                      ) : field === 'selected_hours' ? (
+                        <textarea
+                          value={formData[field] ? JSON.stringify(formData[field]) : ''}
+                          onChange={e => {
+                            try { setFormData(p => ({ ...p, [field]: JSON.parse(e.target.value) })); }
+                            catch { setFormData(p => ({ ...p, [field]: e.target.value })); }
+                          }}
+                          rows={3} placeholder='JSON 格式，如 [100, 500, 1000]'
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none font-mono text-xs"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={(formData as Record<string, unknown>)[field] as string || ''}
+                          onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
+                          placeholder={`输入${FIELD_LABELS[field] || field}`}
+                          className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 详情字段分隔线 */}
+              <div className="border-t border-gray-200 pt-4">
+                <p className="text-xs text-gray-400 mb-3 font-medium">以下为详情字段（点击编辑时查看）</p>
+                <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+                  {DETAIL_FIELDS.map(field => (
+                    <div key={field}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{FIELD_LABELS[field] || field}</label>
+                      <input
+                        type="text"
+                        value={(formData as Record<string, unknown>)[field] as string || ''}
+                        onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
+                        placeholder={`输入${FIELD_LABELS[field] || field}`}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+
+              {/* 状态/失败原因/5天数据/开始时间 */}
+              <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+                {['status', 'fail_reason', 'five_days', 'start_time'].map(field => (
+                  <div key={field}>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{FIELD_LABELS[field] || field}</label>
+                    {field === 'start_time' ? (
+                      <input
+                        type="datetime-local"
+                        value={
+                          (formData[field] as string)?.slice(0, 16)
+                            || new Date().toISOString().slice(0, 16)
+                        }
+                        onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={(formData as Record<string, unknown>)[field] as string || ''}
+                        onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
+                        placeholder={`输入${FIELD_LABELS[field] || field}`}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-2xl border-t border-gray-100">

@@ -88,6 +88,8 @@ export interface ProductionRecord {
 // 可靠性实验记录（另一个 Supabase 项目 - records 表）
 export interface ReliabilityTestRecord {
   id: string;
+  test_no: string;          // 试验编号
+  equipment: string;        // 试验设备
   series: string;           // 系列/料号
   capacity: string;         // 容量
   voltage: string;          // 电压
@@ -102,10 +104,10 @@ export interface ReliabilityTestRecord {
   negative_foil: string;    // 负箔
   electrolyte_paper: string;// 电解纸
   electrolyte: string;      // 电解液
-  bakelite_cover: string;   // 酚醛盖板
+  bakelite_cover: string;  // 电木盖
   status: string;           // 状态
   fail_reason: string;      // 失败原因
-  shelf_no: string;         // 货架号
+  shelf_no: string;         // 排架
   time_adjust: unknown;     // 时间调整 (JSON)
   start_time: string;       // 开始时间
 }
