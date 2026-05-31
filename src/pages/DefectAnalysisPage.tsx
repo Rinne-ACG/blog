@@ -21,6 +21,16 @@ const formatNum = (n: number): string => {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 };
 
+/** 将任意值转为合法日期字符串，无效时返回空字符串 */
+const parseDate = (v: unknown): string => {
+  const s = String(v ?? '').trim();
+  if (!s || s === '——' || s === '-' || s === '无' || s === 'NULL') return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+};
+
 const emptyRecord = (): DefectAnalysisRecord => ({
   id: generateUUID(),
   entryDate: new Date().toISOString().slice(0, 10),
@@ -442,12 +452,10 @@ export default function DefectAnalysisPage() {
   const handleSaveRecord = async () => {
     if (!activeSheetId) return;
     const row = { ...formData };
-    if (!row.entryDate) row.entryDate = new Date().toISOString().slice(0, 10);
-
     const dbRow = {
       id: row.id,
       sheet_id: activeSheetId,
-      entry_date: row.entryDate,
+      entry_date: row.entryDate ? parseDate(row.entryDate) || null : null,
       seq: row.seq,
       work_order_no: row.workOrderNo,
       spec_size: row.specSize,
@@ -528,14 +536,14 @@ export default function DefectAnalysisPage() {
         }
         return '';
       };
-      let entryDate = '';
       const rawDate = g(['日期', '录入日期']);
+      let entryDate: string | null = null;
       if (rawDate instanceof Date) entryDate = rawDate.toISOString().slice(0, 10);
       else if (typeof rawDate === 'number') {
         const d = XLSX.SSF.parse_date_code(rawDate);
         entryDate = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
-      } else entryDate = str(rawDate).slice(0, 10);
-      if (!entryDate) entryDate = new Date().toISOString().slice(0, 10);
+      } else entryDate = parseDate(rawDate);
+      // 不再强制填充当天日期，null 是合法的
 
       return {
         id: generateUUID(),
@@ -558,10 +566,11 @@ export default function DefectAnalysisPage() {
 
     if (imported.length === 0) { showToast('未识别到有效数据', 'error'); return; }
 
-    // 批量写入
+    // 批量写入（entry_date 为空时传 null）
     const dbRows = imported.map(r => ({
       id: r.id, sheet_id: activeSheetId,
-      entry_date: r.entryDate, seq: r.seq,
+      entry_date: r.entryDate ? parseDate(r.entryDate) || null : null,
+      seq: r.seq,
       work_order_no: r.workOrderNo, spec_size: r.specSize,
       foil_supplier: r.foilSupplier, foil_voltage: r.foilVoltage,
       foil_batch_no: r.foilBatchNo, fault_judgment: r.faultJudgment,
