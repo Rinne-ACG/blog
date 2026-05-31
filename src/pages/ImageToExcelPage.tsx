@@ -28,6 +28,37 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// 压缩图片：限制最大宽度/高度为 1024px，降低质量减少 base64 体积
+function compressImage(file: File, maxSize = 1024, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        if (width > height) {
+          height = Math.round((height * maxSize) / width);
+          width = maxSize;
+        } else {
+          width = Math.round((width * maxSize) / height);
+          height = maxSize;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('canvas 不支持')); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      resolve(dataUrl.split(',')[1]);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
 function downloadExcel(tables: TableData[], filename: string) {
   if (!tables || tables.length === 0) {
     alert('没有可下载的表格数据');
@@ -47,7 +78,13 @@ function downloadExcel(tables: TableData[], filename: string) {
 
 // ─── 通过 Vite 代理调用 AI（开发环境）────────────────
 async function analyzeImageWithAI(base64Image: string, mimeType: string): Promise<AnalysisResult> {
-  const prompt = `你是一个专业的表格识别助手。请分析图片中的所有表格数据，并以严格的 JSON 格式返回结果。
+  const prompt = `你是一个专业的表格识别助手。用户上传的是一张纸质表格的照片，请仔细识别图片中的表格结构，并以严格的 JSON 格式返回结果。
+
+重要提示：
+- 图片中一定包含一个或多个表格（可能是打印在纸上的表格）
+- 即使表格是倾斜的、有阴影的、或者拍摄角度不佳，也请尽量识别
+- 识别所有可见的表头列名和每一行的数据
+- 不要返回空 tables 数组，如果确实有表格，请务必提取出来
 
 要求：
 1. 识别图片中所有表格（可能有多个）
@@ -75,7 +112,7 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'glm-5.1',
+      model: 'glm-4v-plus',
       messages: [
         {
           role: 'user',
@@ -145,8 +182,8 @@ export default function ImageToExcelPage() {
     setProgress('正在上传图片并调用 AI 识别...');
 
     try {
-      const base64 = await fileToBase64(file);
-      const mimeType = file.type || 'image/jpeg';
+      const base64 = await compressImage(file);
+      const mimeType = 'image/jpeg'; // compressImage 输出 jpeg
       const analysisResult = await analyzeImageWithAI(base64, mimeType);
       setResult(analysisResult);
       setStep('preview');
