@@ -24,7 +24,7 @@ export async function onRequestPost(context: any) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model || 'glm-4v-plus',
+        model: model || 'glm-4v',
         messages,
         max_tokens,
       }),

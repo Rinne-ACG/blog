@@ -90,7 +90,7 @@ export default defineConfig({
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${apiKey}`,
                 },
-                body: JSON.stringify({ model: model || 'glm-4v-plus', messages, max_tokens }),
+                body: JSON.stringify({ model: model || 'glm-4v', messages, max_tokens }),
               })
 
               const data = await glmRes.json()
