@@ -152,6 +152,15 @@ function getActivePickupTime(
   return { active: lastPickup.toISOString(), allDone: true };
 }
 
+/** 获取记录的取货时间毫秒数（用于排序，无取货时间返回 Infinity） */
+function getPickupTimeMs(r: ReliabilityTestRecord): number {
+  const ta = parseTimeAdjust(r.time_adjust);
+  const { active } = getActivePickupTime(r.start_time, r.selected_hours, ta);
+  if (!active) return Infinity;
+  const ms = new Date(active).getTime();
+  return isNaN(ms) ? Infinity : ms;
+}
+
 /** 计算所有取货时间点（含调整前后对比，用于预览）
  *  original: 原始取货时间（无调整）
  *  adjusted: 应用 timeAdjust 后的取货时间
@@ -259,6 +268,12 @@ function FilterDropdown({
   );
 }
 
+interface UpcomingItem {
+  record: ReliabilityTestRecord;
+  pickupMs: number;
+  pickupTime: string;
+}
+
 export default function ReliabilityTestPage() {
   /* ─── State ─── */
   const [records, setRecords] = useState<ReliabilityTestRecord[]>([]);
@@ -352,6 +367,24 @@ export default function ReliabilityTestPage() {
 
   useEffect(() => { loadRecords(); }, []);
 
+  /* ─── 即将取货数据（现在 ~ 3天后） ─── */
+  const nowMs = Date.now();
+  const threeDaysLaterMs = nowMs + 3 * 86400000;
+
+  const upcomingPickups: UpcomingItem[] = (() => {
+    return records
+      .map(r => {
+        const ta = parseTimeAdjust(r.time_adjust);
+        const pickup = getActivePickupTime(r.start_time, r.selected_hours, ta);
+        if (!pickup.active) return null;
+        const ms = new Date(pickup.active).getTime();
+        if (isNaN(ms) || ms < nowMs || ms > threeDaysLaterMs) return null;
+        return { record: r, pickupMs: ms, pickupTime: pickup.active as string };
+      })
+      .filter(Boolean as any)
+      .sort((a, b) => a.pickupMs - b.pickupMs);
+  })();
+
   /* ─── 筛选 + 排序 + 搜索 ─── */
   const filteredAndSorted = (() => {
     let list = [...records];
@@ -362,8 +395,7 @@ export default function ReliabilityTestPage() {
       list = list.filter(r =>
         Object.entries(r).some(([k, v]) =>
           k !== 'id' && k !== 'selected_hours' && k !== 'time_adjust' &&
-          typeof v === 'string' && v.toLowerCase().includes(kw)
-        )
+          typeof v === 'string' && v.toLowerCase().includes(kw))
       );
     }
 
@@ -374,7 +406,7 @@ export default function ReliabilityTestPage() {
       }
     }
 
-    // 排序
+    // 排序：默认按取货时间升序（最近的在前），用户手动排序时优先用用户选择
     if (sortField) {
       list.sort((a, b) => {
         const va = a[sortField], vb = b[sortField];
@@ -384,6 +416,9 @@ export default function ReliabilityTestPage() {
         const sa = String(va), sb = String(vb);
         return sortDir === 'asc' ? sa.localeCompare(sb, 'zh') : sb.localeCompare(sa, 'zh');
       });
+    } else {
+      // 默认：按取货时间升序（最近的在前）
+      list.sort((a, b) => getPickupTimeMs(a) - getPickupTimeMs(b));
     }
 
     return list;
@@ -395,7 +430,7 @@ export default function ReliabilityTestPage() {
 
   // 获取某字段唯一值（用于筛选）
   const getUniqueVals = (field: keyof ReliabilityTestRecord): string[] =>
-    [...new Set(records.map(r => String((r[field] ?? '')).trim()))].sort((a, b) => a.localeCompare(b, 'zh'));
+    [...new Set(records.map(r => String((r[field] ?? '').trim()))].sort((a, b) => a.localeCompare(b, 'zh'));
 
   /* ─── 排序 ─── */
   const handleSort = (field: keyof ReliabilityTestRecord) => {
@@ -605,6 +640,7 @@ export default function ReliabilityTestPage() {
   /* ─── 渲染 ─── */
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6 max-w-[1600px] mx-auto" ref={filterRef}>
+
       {/* 页面标题 */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -628,6 +664,73 @@ export default function ReliabilityTestPage() {
           </button>
         </div>
       </div>
+
+      {/* ─── 即将取货提醒卡片 ─── */}
+      {!loading && upcomingPickups.length > 0 && (
+        <div className="mb-4">
+          <h2 className="text-sm font-bold text-amber-700 mb-2 flex items-center gap-1.5">
+            ⏰ 即将取货（未来3天内）
+            <span className="text-xs font-normal text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">{upcomingPickups.length} 条</span>
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {upcomingPickups.map(item => {
+              const r = item.record;
+              const hoursLeft = Math.ceil((item.pickupMs - nowMs) / 3600000);
+              const isUrgent = hoursLeft <= 24;
+              return (
+                <div
+                  key={r.id}
+                  className={`rounded-xl border shadow-sm p-3 transition-colors cursor-pointer hover:shadow-md ${
+                    isUrgent
+                      ? 'bg-red-50 border-red-200 hover:bg-red-100'
+                      : 'bg-amber-50 border-amber-200 hover:bg-amber-100'
+                  }`}
+                  onClick={() => openEditForm(r)}
+                >
+                  {/* 顶部：状态和紧急程度 */}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      isUrgent ? 'bg-red-500 text-white' : 'bg-amber-400 text-amber-900'
+                    }`}>
+                      {isUrgent ? '🔥 紧急' : '⏳ 即将'}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {hoursLeft <= 0 ? '已到期' : hoursLeft < 24 ? `${hoursLeft}H后` : `${Math.ceil(hoursLeft / 24)}天后`}
+                    </span>
+                  </div>
+
+                  {/* 核心信息 */}
+                  <div className="space-y-0.5 text-xs">
+                    <p className="font-bold text-gray-800 truncate" title={r.series || ''}>
+                      📦 {r.series || '-'}
+                    </p>
+                    <p className="text-gray-600 truncate" title={r.spec || ''}>
+                      📐 规格：{r.spec || '-'}
+                    </p>
+                    {r.batch_no && (
+                      <p className="text-gray-500 truncate" title={r.batch_no}>
+                        🏷️ 批号：{r.batch_no}
+                      </p>
+                    )}
+                    {r.shelf_no && (
+                      <p className="text-gray-500 truncate">
+                        📍 排架：{r.shelf_no}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 取货时间（最重要） */}
+                  <div className={`mt-2 pt-2 border-t border-dashed text-xs font-medium ${
+                    isUrgent ? 'border-red-200 text-red-700' : 'border-amber-200 text-amber-700'
+                  }`}>
+                    🕐 取货时间：{formatTime(item.pickupTime)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 搜索栏 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 mb-4 flex items-center gap-3">
@@ -911,7 +1014,7 @@ export default function ReliabilityTestPage() {
                       {/* 已有调整提示（编辑模式，不显示具体数值，只提示有调整） */}
                       {hasBase && (
                         <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 inline-flex items-center gap-1">
-                          ℹ️ 该记录已有时间调整，本次输入将在其基础上累加
+                          ⚠️ 该记录已有时间调整，本次输入将在其基础上累加
                         </div>
                       )}
 
