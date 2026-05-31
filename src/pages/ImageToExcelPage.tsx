@@ -112,16 +112,16 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'glm-4v-plus',
+      model: 'glm-5v-turbo',
       messages: [
         {
           role: 'user',
           content: [
-            { type: 'text', text: prompt },
             {
               type: 'image_url',
               image_url: { url: `data:${mimeType};base64,${base64Image}` },
             },
+            { type: 'text', text: prompt },
           ],
         },
       ],
