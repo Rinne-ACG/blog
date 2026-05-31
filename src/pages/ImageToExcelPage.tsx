@@ -71,7 +71,7 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'glm-4v',
+      model: 'glm-5.1',
       messages: [
         {
           role: 'user',
@@ -90,11 +90,15 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`AI 服务错误 ${response.status}: ${errText.slice(0, 200)}`);
+    throw new Error(`AI 服务错误 ${response.status}: ${errText}`);
   }
 
   const data = await response.json();
-  const content = (data.choices as any)?.[0]?.message?.content ?? '';
+  console.log('AI 完整响应:', JSON.stringify(data).slice(0, 500));
+  const content = (data as any)?.choices?.[0]?.message?.content ?? '';
+  if (!content) {
+    throw new Error(`AI 返回内容为空，完整响应：${JSON.stringify(data).slice(0, 500)}`);
+  }
   const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
 
   try {

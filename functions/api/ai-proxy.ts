@@ -16,7 +16,7 @@ export async function onRequestPost(context: any) {
       );
     }
 
-    // 调用智谱 GLM-4V API（OpenAI 兼容格式）
+    // 调用智谱 GLM-5.1 API（OpenAI 兼容格式）
     const glmRes = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
       method: 'POST',
       headers: {
@@ -24,7 +24,7 @@ export async function onRequestPost(context: any) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model || 'glm-4v',
+        model: model || 'glm-5.1',
         messages,
         max_tokens,
       }),
