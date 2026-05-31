@@ -76,10 +76,10 @@ export default defineConfig({
               const { model, messages, max_tokens } = JSON.parse(body)
 
               // 从 .env.local 读取 API Key（服务端，不暴露到前端）
-              const apiKey = env.VITE_GLM_API_KEY || '';
+              const apiKey = env.VITE_GLM_API_KEY || ''
               if (!apiKey) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: '未配置 VITE_GLM_API_KEY，请在 .env.local 中设置' }));
+                res.writeHead(500, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ error: '未配置 VITE_GLM_API_KEY，请在 .env.local 中设置' }))
                 return
               }
 
