@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 
 // ─── 类型定义 ────────────────────────────────────────
