@@ -15,19 +15,6 @@ interface AnalysisResult {
 
 type Step = 'upload' | 'analyzing' | 'preview' | 'error';
 
-// ─── 工具函数 ────────────────────────────────────────
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(',')[1]);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 // 压缩图片：限制最大宽度/高度为 1024px，降低质量减少 base64 体积
 function compressImage(file: File, maxSize = 1024, quality = 0.85): Promise<string> {
   return new Promise((resolve, reject) => {
