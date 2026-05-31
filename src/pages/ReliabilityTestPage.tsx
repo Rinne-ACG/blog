@@ -430,7 +430,7 @@ export default function ReliabilityTestPage() {
 
   // 获取某字段唯一值（用于筛选）
   const getUniqueVals = (field: keyof ReliabilityTestRecord): string[] =>
-    [...new Set(records.map(r => String((r[field] ?? '').trim()))].sort((a, b) => a.localeCompare(b, 'zh'));
+    [...new Set(records.map(r => String((r[field] ?? '')).trim())].sort((a, b) => a.localeCompare(b, 'zh'));
 
   /* ─── 排序 ─── */
   const handleSort = (field: keyof ReliabilityTestRecord) => {
