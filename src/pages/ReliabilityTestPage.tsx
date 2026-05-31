@@ -428,9 +428,13 @@ export default function ReliabilityTestPage() {
   const totalPages = Math.max(1, Math.ceil(filteredAndSorted.length / PAGE_SIZE));
   const paginatedData = filteredAndSorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // 获取某字段唯一值（用于筛选）
-  const getUniqueVals = (field: keyof ReliabilityTestRecord): string[] =>
-    [...new Set(records.map(r => String((r[field] ?? '')).trim())].sort((a, b) => a.localeCompare(b, 'zh'));
+  const getUniqueVals = (field: keyof ReliabilityTestRecord): string[] => {
+    const vals = records.map(r => {
+      const v = r[field];
+      return (v == null ? '' : String(v)).trim();
+    });
+    return [...new Set(vals)].sort((a, b) => a.localeCompare(b, 'zh'));
+  };
 
   /* ─── 排序 ─── */
   const handleSort = (field: keyof ReliabilityTestRecord) => {
