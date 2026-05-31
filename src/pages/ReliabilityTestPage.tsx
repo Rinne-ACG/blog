@@ -14,6 +14,7 @@ interface ColumnDef {
 
 /** 主表头列（表格中直接展示的字段） */
 const MAIN_COLUMNS: ColumnDef[] = [
+  { field: 'start_time', label: '投入时间' },
   { field: 'test_no', label: '试验编号' },
   { field: 'equipment', label: '试验设备' },
   { field: 'series', label: '系列' },
@@ -21,7 +22,7 @@ const MAIN_COLUMNS: ColumnDef[] = [
   { field: 'voltage', label: '电压' },
   { field: 'spec', label: '规格' },
   { field: 'shelf_no', label: '排架' },
-  { field: 'selected_hours', label: '选定测试时间' },
+  { field: 'selected_hours', label: '试验时间选择' },
   { field: 'note', label: '备注' },
 ];
 
@@ -31,6 +32,8 @@ const DETAIL_FIELDS: (keyof ReliabilityTestRecord)[] = [
   'electrolyte_paper', 'electrolyte', 'bakelite_cover',
 ];
 
+/** 可选测试时间点（小时） */
+const TEST_HOURS_OPTIONS = [96, 250, 500, 1000, 2000, 3000, 5000, 10000];
 
 /** 字段中文标签映射 */
 const FIELD_LABELS: Record<string, string> = {
@@ -50,7 +53,8 @@ const FIELD_LABELS: Record<string, string> = {
   status: '状态',
   fail_reason: '失败原因',
   five_days: '5天数据',
-  start_time: '开始时间',
+  start_time: '投入时间',
+  selected_hours: '试验时间选择',
   note: '备注',
 };
 
@@ -59,19 +63,133 @@ function formatTime(val: string | null | undefined): string {
   if (!val) return '';
   try {
     const d = new Date(val);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  } catch {
-    return String(val);
+    const Y = d.getFullYear();
+    const M = String(d.getMonth() + 1).padStart(2, '0');
+    const D = String(d.getDate()).padStart(2, '0');
+    const H = String(d.getHours()).padStart(2, '0');
+    const Min = String(d.getMinutes()).padStart(2, '0');
+    return `${Y}-${M}-${D} ${H}:${Min}`;
+  } catch { return String(val); }
+}
+
+/** 时间调整信息（与小程序格式保持一致） */
+interface TimeAdjust {
+  hours: number;
+  direction: 'advance' | 'delay';  // advance=提前, delay=推迟
+}
+
+/** 安全解析 time_adjust（兼容 type/direction 两种字段名） */
+function parseTimeAdjust(ta: unknown): TimeAdjust | undefined {
+  if (!ta) return undefined;
+  let obj: Record<string, unknown>;
+  if (typeof ta === 'string') {
+    try { obj = JSON.parse(ta); } catch { return undefined; }
+  } else {
+    obj = ta as Record<string, unknown>;
   }
+  const hours = typeof obj.hours === 'number' ? obj.hours : 0;
+  if (hours <= 0) return undefined;
+  // 兼容：优先读 direction，其次读 type
+  const dir = (obj.direction as string) || (obj.type as string) || 'delay';
+  return { hours, direction: dir as 'advance' | 'delay' };
+}
+
+/** 将 TimeAdjust 转为毫秒偏移量（正数=推迟，负数=提前） */
+function adjustToMs(adj?: TimeAdjust | null): number {
+  if (!adj || adj.hours <= 0) return 0;
+  const ms = adj.hours * 3600 * 1000;
+  return adj.direction === 'advance' ? -ms : ms;
+}
+
+/** 合并两个调整量，返回累加后的 TimeAdjust（用于保存） */
+function combineAdjust(
+  base?: TimeAdjust | null,
+  extra?: TimeAdjust | null,
+): TimeAdjust | undefined {
+  const baseMs = adjustToMs(base);
+  const extraMs = adjustToMs(extra);
+  const totalMs = baseMs + extraMs;
+  if (totalMs === 0) return undefined;
+  const absMs = Math.abs(totalMs);
+  const hours = Math.round(absMs / 3600 / 1000);
+  if (hours <= 0) return undefined;
+  return {
+    direction: totalMs > 0 ? 'delay' : 'advance',
+    hours,
+  };
+}
+
+/** 根据投入时间和试验时间数组，计算当前活跃的取货时间（支持时间调整） */
+function getActivePickupTime(
+  startTime: string | null | undefined,
+  selectedHours: unknown,
+  timeAdjust?: TimeAdjust | null,
+): { active: string | null; allDone: boolean } {
+  if (!startTime || !Array.isArray(selectedHours) || selectedHours.length === 0) {
+    return { active: null, allDone: false };
+  }
+  const start = new Date(startTime).getTime();
+  if (isNaN(start)) return { active: null, allDone: false };
+
+  const sorted = [...(selectedHours as number[])].sort((a, b) => a - b);
+  const now = Date.now();
+  const ms = adjustToMs(timeAdjust);
+
+  for (const h of sorted) {
+    const pickupMs = start + h * 3600 * 1000 + ms;
+    if (isNaN(pickupMs)) continue;
+    const pickupTime = new Date(pickupMs);
+    if (isNaN(pickupTime.getTime())) continue;
+    if (pickupTime.getTime() > now) {
+      return { active: pickupTime.toISOString(), allDone: false };
+    }
+  }
+  const lastH = sorted[sorted.length - 1];
+  const lastMs = start + lastH * 3600 * 1000 + ms;
+  if (isNaN(lastMs)) return { active: null, allDone: false };
+  const lastPickup = new Date(lastMs);
+  if (isNaN(lastPickup.getTime())) return { active: null, allDone: false };
+  return { active: lastPickup.toISOString(), allDone: true };
+}
+
+/** 计算所有取货时间点（含调整前后对比，用于预览）
+ *  original: 原始取货时间（无调整）
+ *  adjusted: 应用 timeAdjust 后的取货时间
+ */
+function getPickupPreview(
+  startTime: string | null | undefined,
+  selectedHours: unknown,
+  timeAdjust?: TimeAdjust | null,
+): { hour: number; original: string; adjusted: string; isExpired: boolean }[] {
+  if (!startTime || !Array.isArray(selectedHours) || selectedHours.length === 0) return [];
+  const start = new Date(startTime).getTime();
+  if (isNaN(start)) return [];
+
+  const sorted = [...(selectedHours as number[])].sort((a, b) => a - b);
+  const now = Date.now();
+  const ms = adjustToMs(timeAdjust);
+
+  return sorted.map(h => {
+    const baseMs = start + h * 3600 * 1000;
+    // 安全保护：baseMs 无效时跳过
+    if (isNaN(baseMs)) return null;
+    const original = new Date(baseMs);
+    const adjusted = new Date(baseMs + ms);
+    if (isNaN(original.getTime()) || isNaN(adjusted.getTime())) return null;
+    return {
+      hour: h,
+      original: original.toISOString(),
+      adjusted: adjusted.toISOString(),
+      isExpired: adjusted.getTime() <= now,
+    };
+  }).filter(Boolean) as { hour: number; original: string; adjusted: string; isExpired: boolean }[];
 }
 
 /* ─── Toast 提示组件 ─── */
 function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 2500); return () => clearTimeout(t); }, [onClose]);
   return (
-    <div className={`fixed top-4 right-4 z-[100] px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-bounce-in ${
-      type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
-    }`}>
+    <div className={`fixed top-4 right-4 z-[100] px-5 py-3 rounded-xl shadow-lg text-sm font-medium ${type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
       {type === 'success' ? '✅' : '❌'} {msg}
     </div>
   );
@@ -121,14 +239,13 @@ function FilterDropdown({
           <input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-3.5 h-3.5 accent-emerald-600" />
           全选
         </label>
-        <span className="text-[10px] text-gray-400">已选 {Array.from(selected).filter(s => !search || s.toLowerCase().includes(search.toLowerCase())).length}/{filtered.length}</span>
       </div>
       <ul className="flex-1 overflow-y-auto p-1.5 space-y-0.5" onClick={e => e.stopPropagation()}>
         {filtered.map(v => (
           <li key={v || '(空)'}>
-            <label className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-xs transition-colors hover:bg-gray-50 ${selected.has(v) ? 'bg-emerald-50 text-emerald-700' : 'text-gray-600'}`}>
+            <label className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-xs transition-colors ${selected.has(v) ? 'bg-emerald-50 text-emerald-700' : 'text-gray-600'}`}>
               <input type="checkbox" checked={selected.has(v)} onChange={() => toggleOne(v)} className="w-3.5 h-3.5 accent-emerald-600" />
-              <span className="truncate">{v || '<em>（空）</em>'}</span>
+              <span className="truncate">{v || '<空>'}</span>
             </label>
           </li>
         ))}
@@ -150,6 +267,8 @@ export default function ReliabilityTestPage() {
   // 弹窗
   const [showForm, setShowForm] = useState(false);
   const [editingRecord, setEditingRecord] = useState<ReliabilityTestRecord | null>(null);
+  // 编辑时：基准调整值（已有调整），保存时与 formData.time_adjust 累加
+  const [baseTimeAdjust, setBaseTimeAdjust] = useState<TimeAdjust | undefined>(undefined);
   const [formData, setFormData] = useState<Partial<ReliabilityTestRecord>>({});
   const [formLoading, setFormLoading] = useState(false);
 
@@ -199,7 +318,30 @@ export default function ReliabilityTestPage() {
     try {
       const { data, error } = await reliabilityDb.from(TABLE).select('*').order('create_time', { ascending: false });
       if (error) throw error;
-      setRecords(data || []);
+
+      // 自动更新状态：所有取货时间已过 → status = '已完成'
+      const toUpdate: string[] = [];
+      (data || []).forEach(r => {
+        if (r.status === '已完成') return;
+        const ta = parseTimeAdjust(r.time_adjust);
+        const { allDone } = getActivePickupTime(r.start_time, r.selected_hours, ta);
+        if (allDone) toUpdate.push(r.id);
+      });
+
+      if (toUpdate.length > 0) {
+        const { error: updError } = await reliabilityDb
+          .from(TABLE)
+          .update({ status: '已完成', update_time: new Date().toISOString() })
+          .in('id', toUpdate);
+        if (updError) console.warn('自动更新状态失败:', updError.message);
+        // 重新加载最新数据
+        const { data: refreshed, error: refError } = await reliabilityDb
+          .from(TABLE).select('*').order('create_time', { ascending: false });
+        if (refError) throw refError;
+        setRecords(refreshed || []);
+      } else {
+        setRecords(data || []);
+      }
     } catch (err) {
       console.error('加载可靠性实验数据失败:', err);
       showToast('加载数据失败', 'error');
@@ -268,14 +410,19 @@ export default function ReliabilityTestPage() {
   /* ─── 新增 ─── */
   const openAddForm = () => {
     setEditingRecord(null);
-    setFormData({});
+    setBaseTimeAdjust(undefined);
+    setFormData({ selected_hours: [] });
     setShowForm(true);
   };
 
   /* ─── 编辑 ─── */
   const openEditForm = (r: ReliabilityTestRecord) => {
     setEditingRecord(r);
-    setFormData({ ...r });
+    // 已有调整存入 baseTimeAdjust（不显示在表单上）
+    const parsedTA = parseTimeAdjust(r.time_adjust);
+    setBaseTimeAdjust(parsedTA || undefined);
+    // 表单 time_adjust 清空，等待用户输入新增调整量
+    setFormData({ ...r, time_adjust: undefined });
     setShowForm(true);
   };
 
@@ -289,6 +436,9 @@ export default function ReliabilityTestPage() {
     setFormLoading(true);
     try {
       const now = new Date().toISOString();
+      // 保存时：合并已有调整 + 本次新增调整
+      const finalTimeAdjust = combineAdjust(baseTimeAdjust || undefined, formData.time_adjust as TimeAdjust | undefined);
+
       const row: Record<string, unknown> = {
         test_no: formData.test_no || '',
         equipment: formData.equipment || '',
@@ -308,6 +458,8 @@ export default function ReliabilityTestPage() {
         fail_reason: formData.fail_reason || '',
         shelf_no: formData.shelf_no || '',
         start_time: formData.start_time || now,
+        selected_hours: formData.selected_hours || [],
+        time_adjust: finalTimeAdjust || null,
       };
 
       if (editingRecord) {
@@ -341,7 +493,7 @@ export default function ReliabilityTestPage() {
       if (error) throw error;
       setRecords(prev => prev.filter(r => r.id !== deleteTarget.id));
       showToast('已删除', 'success');
-    } catch (err) {
+    } catch {
       showToast('删除失败', 'error');
     } finally {
       setDeleteTarget(null);
@@ -373,9 +525,9 @@ export default function ReliabilityTestPage() {
     const exportData = filteredAndSorted.map(r => {
       const row: Record<string, unknown> = {};
       MAIN_COLUMNS.forEach(col => {
-        row[col.label] = col.field === 'start_time' || col.field === 'create_time'
+        row[col.label] = col.field === 'start_time'
           ? formatTime(r[col.field])
-          : r[col.field];
+          : (r[col.field] ?? '');
       });
       return row;
     });
@@ -425,10 +577,10 @@ export default function ReliabilityTestPage() {
 
         if (!mapped.series) continue;
 
-        mapped.create_time = now;
-        mapped.update_time = now;
-        mapped.status ||= 'active';
-        mapped.start_time ||= now.split('T')[0];
+        (mapped as Record<string, unknown>).create_time = now;
+        (mapped as Record<string, unknown>).update_time = now;
+        (mapped as Record<string, unknown>).status ||= 'active';
+        ((mapped as Record<string, unknown>).start_time as string) ||= now.split('T')[0];
 
         const { error } = await reliabilityDb.from(TABLE).insert(mapped);
         if (error) {
@@ -464,17 +616,14 @@ export default function ReliabilityTestPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={handleExportExcel}
             className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors shadow-sm">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
             导出 Excel
           </button>
           <label className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors cursor-pointer shadow-sm">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
             导入 Excel
             <input type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleImportExcel} />
           </label>
           <button onClick={openAddForm}
             className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 shadow-sm">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             新增记录
           </button>
         </div>
@@ -492,7 +641,7 @@ export default function ReliabilityTestPage() {
         />
         {searchText && (
           <button onClick={() => setSearchText('')} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            ✕
           </button>
         )}
       </div>
@@ -523,13 +672,14 @@ export default function ReliabilityTestPage() {
                             className={`p-0.5 rounded hover:bg-slate-600 ${filterValues[col.field]?.size ? 'text-amber-400' : 'text-slate-300'}`}
                             onClick={e => { e.stopPropagation(); const btn = e.currentTarget; const r = btn.getBoundingClientRect(); setOpenFilterField(openFilterField === col.field ? null : col.field); setFilterPos({ top: r.bottom + 4, left: r.left }); }}
                           >
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-1.447.894l-4-2A1 1 0 017 15V10.414L3.293 6.707A1 1 0 013 6V3z" /></svg>
+                            ▲
                           </button>
                           {sortField === col.field && <span className="text-xs">{sortDir === 'asc' ? '↑' : '↓'}</span>}
                           {openFilterField === col.field && (
                             <div className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-2xl w-52"
                               style={{ top: filterPos?.top ?? 0, left: filterPos?.left ?? 0 }}
-                              onClick={e => e.stopPropagation()}>
+                              onClick={e => e.stopPropagation()}
+                            >
                               <FilterDropdown
                                 uniqueVals={getUniqueVals(col.field)}
                                 selected={filterValues[col.field] ?? new Set()}
@@ -541,6 +691,9 @@ export default function ReliabilityTestPage() {
                         </div>
                       </th>
                     ))}
+                    <th className="px-2 py-2 text-left font-semibold text-xs whitespace-nowrap border-r border-slate-500">
+                      取货时间
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -557,19 +710,39 @@ export default function ReliabilityTestPage() {
                       </td>
                       {MAIN_COLUMNS.map(col => {
                         const rawVal = r[col.field];
-                        const display = col.field === 'start_time' ? formatTime(rawVal as string | null | undefined)
-                          : col.field === 'five_days' ? (rawVal ? String(rawVal) : '-')
-                          : col.field === 'selected_hours' ? (rawVal ? JSON.stringify(rawVal) : '-')
-                          : (rawVal == null ? '-' : String(rawVal));
+                        let display: string;
+                        if (col.field === 'start_time') {
+                          display = formatTime(rawVal as string | null | undefined);
+                        } else if (col.field === 'five_days') {
+                          display = rawVal ? String(rawVal) : '-';
+                        } else if (col.field === 'selected_hours') {
+                          display = Array.isArray(rawVal) ? (rawVal as number[]).map(v => `${v}H`).join(', ') : '-';
+                        } else {
+                          display = rawVal == null ? '-' : String(rawVal);
+                        }
                         return (
                           <td key={col.field}
-                            className={`px-2 py-1.5 text-gray-700 whitespace-nowrap text-center ${
-                              col.field === 'note' ? 'max-w-[150px] truncate' : ''
-                            }`}
-                            title={typeof rawVal === 'string' && rawVal?.length > 30 ? rawVal : ''}
+                            className={`px-2 py-1.5 text-gray-700 whitespace-nowrap text-center`}
                           >{display}</td>
                         );
                       })}
+                      <td className={`px-2 py-1.5 text-center text-xs font-medium ${
+                        (() => {
+                          const ta = parseTimeAdjust(r.time_adjust);
+                          const pickup = getActivePickupTime(r.start_time, r.selected_hours, ta);
+                          if (!pickup.active) return 'text-gray-400';
+                          if (pickup.allDone) return 'text-gray-400';
+                          return new Date(pickup.active).getTime() - Date.now() < 86400000 ? 'text-red-600' : 'text-emerald-700';
+                        })()
+                      }`}>
+                        {(() => {
+                          const ta = parseTimeAdjust(r.time_adjust);
+                          const pickup = getActivePickupTime(r.start_time, r.selected_hours, ta);
+                          if (!pickup.active) return '-';
+                          const txt = formatTime(pickup.active);
+                          return pickup.allDone ? `${txt}（已到期）` : txt;
+                        })()}
+                      </td>
                     </tr>
                   )) : (
                     <tr><td colSpan={MAIN_COLUMNS.length + 1} className="px-6 py-16 text-center text-gray-400 text-sm">暂无数据</td></tr>
@@ -593,9 +766,7 @@ export default function ReliabilityTestPage() {
                       <span key={p} className="flex items-center">
                         {i > 0 && arr[i - 1] !== p - 1 && <span className="text-gray-300 mx-1">...</span>}
                         <button onClick={() => setPage(p)}
-                          className={`w-8 h-8 text-xs rounded-md font-medium transition-colors ${
-                            p === page ? 'bg-slate-700 text-white' : 'hover:bg-gray-100 text-gray-600'
-                          }`}>{p}</button>
+                          className={`w-8 h-8 text-xs rounded-md font-medium transition-colors ${p === page ? 'bg-slate-700 text-white' : 'hover:bg-gray-100 text-gray-600'}`}>{p}</button>
                       </span>
                     ))}
                   <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}
@@ -617,7 +788,7 @@ export default function ReliabilityTestPage() {
               </h2>
               <button onClick={() => setShowForm(false)}
                 className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                ✕
               </button>
             </div>
 
@@ -639,22 +810,43 @@ export default function ReliabilityTestPage() {
                         <input
                           type="datetime-local"
                           value={
-                            (formData[field] as string)?.slice(0, 16)
+                            ((formData as Record<string, unknown>)[field] as string)?.slice(0, 16)
                               || new Date().toISOString().slice(0, 16)
                           }
                           onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
                           className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                         />
                       ) : field === 'selected_hours' ? (
-                        <textarea
-                          value={formData[field] ? JSON.stringify(formData[field]) : ''}
-                          onChange={e => {
-                            try { setFormData(p => ({ ...p, [field]: JSON.parse(e.target.value) })); }
-                            catch { setFormData(p => ({ ...p, [field]: e.target.value })); }
-                          }}
-                          rows={3} placeholder='JSON 格式，如 [100, 500, 1000]'
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none font-mono text-xs"
-                        />
+                        <div className="flex flex-wrap gap-2">
+                          {TEST_HOURS_OPTIONS.map(h => {
+                            const selected = Array.isArray(formData.selected_hours)
+                              ? (formData.selected_hours as number[]).includes(h)
+                              : false;
+                            return (
+                              <label
+                                key={h}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${selected ? 'bg-emerald-50 border-emerald-400 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="sr-only"
+                                  checked={selected}
+                                  onChange={() => {
+                                    const curr = Array.isArray(formData.selected_hours)
+                                      ? [...(formData.selected_hours as number[])]
+                                      : [];
+                                    if (selected) {
+                                      setFormData(p => ({ ...p, selected_hours: curr.filter(v => v !== h) }));
+                                    } else {
+                                      setFormData(p => ({ ...p, selected_hours: [...curr, h] }));
+                                    }
+                                  }}
+                                />
+                                <span className="text-xs">{h}H</span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       ) : (
                         <input
                           type="text"
@@ -667,6 +859,149 @@ export default function ReliabilityTestPage() {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* ─── 时间调整（可选，整体调整所有提醒时间）─── */}
+              <div className="border-t border-gray-200 pt-4">
+                <label className="block text-xs font-semibold text-gray-700 mb-2">时间调整（可选，整体调整所有提醒时间）</label>
+                {(() => {
+                  // baseTA：已有调整（编辑模式从 baseTimeAdjust 读取，新增模式为 undefined）
+                  const baseTA = editingRecord ? baseTimeAdjust : undefined;
+                  const hasBase = baseTA && baseTA.hours > 0;
+
+                  // newTA：本次表单输入的新增调整量
+                  const newTA = (formData.time_adjust || {}) as TimeAdjust;
+                  const newDir = newTA.direction || 'delay';
+                  const newHours = newTA.hours || 0;
+
+                  // 预览：原始时间 → 合并后（base + new）的时间
+                  const preview = getPickupPreview(
+                    (formData as Record<string, unknown>).start_time as string,
+                    formData.selected_hours,
+                    combineAdjust(baseTA, newTA) || undefined,
+                  );
+
+                  // 快捷按钮：在新增调整量上累加
+                  const applyExtra = (h: number) => {
+                    const nextHours = newHours + h;
+                    setFormData(p => ({
+                      ...p,
+                      time_adjust: { direction: newDir, hours: nextHours },
+                    }));
+                  };
+
+                  // 切换提前/推迟
+                  const switchDir = (t: 'advance' | 'delay') => {
+                    setFormData(p => ({
+                      ...p,
+                      time_adjust: { ...(p.time_adjust || {}), direction: t },
+                    }));
+                  };
+
+                  // 手动输入小时数（替换新增量）
+                  const setNewHours = (val: number) => {
+                    setFormData(p => ({
+                      ...p,
+                      time_adjust: { ...(p.time_adjust || {}), direction: newDir, hours: val },
+                    }));
+                  };
+
+                  return (
+                    <div className="space-y-3">
+                      {/* 已有调整提示（编辑模式，不显示具体数值，只提示有调整） */}
+                      {hasBase && (
+                        <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 inline-flex items-center gap-1">
+                          ℹ️ 该记录已有时间调整，本次输入将在其基础上累加
+                        </div>
+                      )}
+
+                      {/* 提前/推迟 + 小时输入 */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => switchDir('advance')}
+                            className={`px-4 py-2 text-xs font-medium flex items-center gap-1 transition-colors ${
+                              newDir === 'advance'
+                                ? 'bg-sky-500 text-white'
+                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            提前
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => switchDir('delay')}
+                            className={`px-4 py-2 text-xs font-medium flex items-center gap-1 transition-colors border-l border-gray-200 ${
+                              newDir === 'delay'
+                                ? 'bg-sky-500 text-white'
+                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            推迟
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={newHours || ''}
+                            onChange={e => setNewHours(parseInt(e.target.value) || 0)}
+                            placeholder="0"
+                            className="w-20 px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-sky-300"
+                          />
+                          <span className="text-xs text-gray-500">小时（本次新增）</span>
+                        </div>
+                      </div>
+
+                      {/* 调整预览 */}
+                      {preview.length > 0 && newHours > 0 && (
+                        <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                          <p className="text-xs text-gray-400 font-medium">
+                            调整预览：原始时间 → 累加后时间
+                            {hasBase && (
+                              <span className="ml-1 text-amber-500">
+                                （已有调整 {baseTA!.direction === 'advance' ? '提前' : '推迟'}{baseTA!.hours}H）
+                              </span>
+                            )}
+                          </p>
+                          {preview.map(item => (
+                            <div key={item.hour} className="flex items-center gap-2 text-xs">
+                              <span className="font-medium text-gray-600 w-12">{item.hour}H</span>
+                              <span className="text-gray-400 line-through">{formatTime(item.original)}</span>
+                              <span className="text-gray-300">→</span>
+                              <span className={item.isExpired ? 'text-gray-400' : 'text-red-500 font-medium'}>
+                                {formatTime(item.adjusted)}
+                                {item.isExpired ? '（已到期）' : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 快捷按钮：累加 */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {([24, 48, 72, 168] as const).map(h => (
+                          <button
+                            key={h}
+                            type="button"
+                            onClick={() => applyExtra(h)}
+                            className="px-2.5 py-1 text-xs border border-gray-200 rounded-md hover:bg-gray-50 text-gray-600 transition-colors"
+                          >
+                            +{h}H（累计）
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setFormData(p => ({ ...p, time_adjust: undefined }))}
+                          className="px-3 py-1 text-xs border border-orange-200 text-orange-600 rounded-md hover:bg-orange-50 transition-colors"
+                        >
+                          清除本次调整
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* 详情字段分隔线 */}
@@ -688,30 +1023,18 @@ export default function ReliabilityTestPage() {
                 </div>
               </div>
 
-              {/* 状态/失败原因/5天数据/开始时间 */}
+              {/* 状态/失败原因/5天数据 */}
               <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-                {['status', 'fail_reason', 'five_days', 'start_time'].map(field => (
+                {['status', 'fail_reason', 'five_days'].map(field => (
                   <div key={field}>
                     <label className="block text-xs font-medium text-gray-600 mb-1">{FIELD_LABELS[field] || field}</label>
-                    {field === 'start_time' ? (
-                      <input
-                        type="datetime-local"
-                        value={
-                          (formData[field] as string)?.slice(0, 16)
-                            || new Date().toISOString().slice(0, 16)
-                        }
-                        onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        value={(formData as Record<string, unknown>)[field] as string || ''}
-                        onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
-                        placeholder={`输入${FIELD_LABELS[field] || field}`}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                      />
-                    )}
+                    <input
+                      type="text"
+                      value={(formData as Record<string, unknown>)[field] as string || ''}
+                      onChange={e => setFormData(p => ({ ...p, [field]: e.target.value }))}
+                      placeholder={`输入${FIELD_LABELS[field] || field}`}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                    />
                   </div>
                 ))}
               </div>

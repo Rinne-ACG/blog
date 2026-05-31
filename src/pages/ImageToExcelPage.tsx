@@ -1,8 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import OpenAI from 'openai';
 
-// ─── 类型定义 ───────────────────────────────────────────
+// ─── 类型定义 ─────────────────────────────────────────────
 interface TableData {
   headers: string[];
   rows: (string | number)[][];
@@ -16,13 +15,12 @@ interface AnalysisResult {
 
 type Step = 'upload' | 'analyzing' | 'preview' | 'error';
 
-// ─── 工具函数 ───────────────────────────────────────────
+// ─── 工具函数 ─────────────────────────────────────────────
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // 返回 data URL（去掉 base64, 前缀）
       resolve(result.split(',')[1]);
     };
     reader.onerror = reject;
@@ -36,7 +34,6 @@ function downloadExcel(tables: TableData[], filename: string) {
     const sheetName = (table.title || `Sheet${idx + 1}`).slice(0, 31);
     const wsData = [table.headers, ...table.rows];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    // 设置列宽
     ws['!cols'] = table.headers.map(() => ({ wch: 16 }));
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   });
@@ -44,18 +41,8 @@ function downloadExcel(tables: TableData[], filename: string) {
   XLSX.writeFile(wb, `${filename}_${today}.xlsx`);
 }
 
-// ─── GPT-4o 调用 ─────────────────────────────────────────
-async function analyzeImageWithGPT(base64Image: string, mimeType: string): Promise<AnalysisResult> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  if (!apiKey || apiKey === 'your_openai_api_key_here') {
-    throw new Error('请先在 .env.local 中配置 VITE_OPENAI_API_KEY');
-  }
-
-  const client = new OpenAI({
-    apiKey,
-    dangerouslyAllowBrowser: true, // 前端直接调用（Key 仅本地使用，不提交 git）
-  });
-
+// ─── 通过 Vite 代理调用 AI（开发环境）────────────────
+async function analyzeImageWithAI(base64Image: string, mimeType: string): Promise<AnalysisResult> {
   const prompt = `你是一个专业的表格识别助手。请分析图片中的所有表格数据，并以严格的 JSON 格式返回结果。
 
 要求：
@@ -80,28 +67,34 @@ async function analyzeImageWithGPT(base64Image: string, mimeType: string): Promi
   "description": "对图片内容的简短描述（不超过50字）"
 }`;
 
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${mimeType};base64,${base64Image}`,
-              detail: 'high',
+  const response = await fetch('/api/ai-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'glm-4v-plus',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: 'high' },
             },
-          },
-          { type: 'text', text: prompt },
-        ],
-      },
-    ],
+            { type: 'text', text: prompt },
+          ],
+        },
+      ],
+      max_tokens: 4096,
+    }),
   });
 
-  const content = response.choices[0]?.message?.content ?? '';
-  // 清洗可能存在的 markdown 代码块包裹
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`AI 服务错误 ${response.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const content = (data.choices as any)?.[0]?.message?.content ?? '';
   const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
 
   try {
@@ -110,12 +103,12 @@ async function analyzeImageWithGPT(base64Image: string, mimeType: string): Promi
       throw new Error('返回格式不符合预期');
     }
     return parsed;
-  } catch {
-    throw new Error(`AI 返回的数据无法解析，原始内容：${content.slice(0, 200)}`);
+  } catch (e) {
+    throw new Error(`AI 返回的数据无法解析：${content.slice(0, 200)}`);
   }
 }
 
-// ─── 主组件 ───────────────────────────────────────────────
+// ─── 主组件 ─────────────────────────────────────────────
 export default function ImageToExcelPage() {
   const [step, setStep] = useState<Step>('upload');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -130,7 +123,6 @@ export default function ImageToExcelPage() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
-  // 清除图片预览 URL（避免内存泄露）
   useEffect(() => {
     return () => {
       if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
@@ -180,7 +172,7 @@ export default function ImageToExcelPage() {
     if (file) handleFile(file);
   };
 
-  // ─── 粘贴处理（Ctrl+V）──────────────────────────────
+  // ─── 粘贴处理（Ctrl+V）────────────────────────────
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -203,12 +195,7 @@ export default function ImageToExcelPage() {
     setStep('analyzing');
     setErrorMsg('');
 
-    const messages = [
-      '正在上传图片…',
-      '正在识别表格结构…',
-      'AI 分析中，请稍候…',
-      '正在整理数据…',
-    ];
+    const messages = ['正在上传图片…', '正在识别表格结构…', 'AI 分析中，请稍候…', '正在整理数据…'];
     let msgIdx = 0;
     setProgress(messages[msgIdx]);
     const interval = setInterval(() => {
@@ -219,7 +206,7 @@ export default function ImageToExcelPage() {
     try {
       const base64 = await fileToBase64(imageFile);
       const mimeType = imageFile.type || 'image/jpeg';
-      const analysisResult = await analyzeImageWithGPT(base64, mimeType);
+      const analysisResult = await analyzeImageWithAI(base64, mimeType);
       clearInterval(interval);
       setResult(analysisResult);
       setStep('preview');
@@ -234,46 +221,58 @@ export default function ImageToExcelPage() {
   // ─── 表格编辑 ─────────────────────────────────────────
   const updateCell = (tableIdx: number, rowIdx: number, colIdx: number, value: string) => {
     if (!result) return;
-    const newResult = { ...result, tables: result.tables.map((t, ti) => {
-      if (ti !== tableIdx) return t;
-      const newRows = t.rows.map((row, ri) => {
-        if (ri !== rowIdx) return row;
-        const newRow = [...row];
-        newRow[colIdx] = value;
-        return newRow;
-      });
-      return { ...t, rows: newRows };
-    })};
+    const newResult = {
+      ...result,
+      tables: result.tables.map((t, ti) => {
+        if (ti !== tableIdx) return t;
+        const newRows = t.rows.map((row, ri) => {
+          if (ri !== rowIdx) return row;
+          const newRow = [...row];
+          newRow[colIdx] = value;
+          return newRow;
+        });
+        return { ...t, rows: newRows };
+      }),
+    };
     setResult(newResult);
   };
 
   const updateHeader = (tableIdx: number, colIdx: number, value: string) => {
     if (!result) return;
-    const newResult = { ...result, tables: result.tables.map((t, ti) => {
-      if (ti !== tableIdx) return t;
-      const newHeaders = [...t.headers];
-      newHeaders[colIdx] = value;
-      return { ...t, headers: newHeaders };
-    })};
+    const newResult = {
+      ...result,
+      tables: result.tables.map((t, ti) => {
+        if (ti !== tableIdx) return t;
+        const newHeaders = [...t.headers];
+        newHeaders[colIdx] = value;
+        return { ...t, headers: newHeaders };
+      }),
+    };
     setResult(newResult);
   };
 
   const addRow = (tableIdx: number) => {
     if (!result) return;
-    const newResult = { ...result, tables: result.tables.map((t, ti) => {
-      if (ti !== tableIdx) return t;
-      const emptyRow = new Array(t.headers.length).fill('');
-      return { ...t, rows: [...t.rows, emptyRow] };
-    })};
+    const newResult = {
+      ...result,
+      tables: result.tables.map((t, ti) => {
+        if (ti !== tableIdx) return t;
+        const emptyRow = new Array(t.headers.length).fill('');
+        return { ...t, rows: [...t.rows, emptyRow] };
+      }),
+    };
     setResult(newResult);
   };
 
   const deleteRow = (tableIdx: number, rowIdx: number) => {
     if (!result) return;
-    const newResult = { ...result, tables: result.tables.map((t, ti) => {
-      if (ti !== tableIdx) return t;
-      return { ...t, rows: t.rows.filter((_, ri) => ri !== rowIdx) };
-    })};
+    const newResult = {
+      ...result,
+      tables: result.tables.map((t, ti) => {
+        if (ti !== tableIdx) return t;
+        return { ...t, rows: t.rows.filter((_, ri) => ri !== rowIdx) };
+      }),
+    };
     setResult(newResult);
   };
 
@@ -289,9 +288,9 @@ export default function ImageToExcelPage() {
     setEditingHeader(null);
   };
 
-  // ═══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════
   //  渲染
-  // ═══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30">
       <div className="max-w-5xl mx-auto px-4 py-10">
@@ -456,7 +455,6 @@ export default function ImageToExcelPage() {
                     d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347a3.854 3.854 0 00-1.083 1.899l-.18.72a1 1 0 01-.97.765h-1.572a1 1 0 01-.97-.765l-.18-.72a3.854 3.854 0 00-1.083-1.899l-.347-.347z" />
                 </svg>
               </div>
-              {/* 旋转环 */}
               <div className="absolute inset-0 rounded-2xl border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
             </div>
             <div className="text-center">
@@ -653,7 +651,7 @@ export default function ImageToExcelPage() {
               {
                 icon: '🤖',
                 title: 'AI 自动识别',
-                desc: '由 GPT-4o 视觉模型解析图片中的表格结构和数据',
+                desc: '由大模型视觉模型解析图片中的表格结构和数据',
               },
               {
                 icon: '📊',

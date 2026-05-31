@@ -1,7 +1,10 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
+
+// 从 .env / .env.local 加载环境变量（服务端读取，不暴露到前端）
+const env = loadEnv('', process.cwd(), '')
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -58,7 +61,48 @@ export default defineConfig({
           })
         })
 
-        /** 将新图片追加到 GalleryPage.tsx 的 albums 配置（相册不存在则自动创建） */
+        // ─── AI 识别代理（开发环境）────────────────
+        server.middlewares.use('/api/ai-proxy', async (req, res) => {
+          if (req.method !== 'POST') {
+            res.writeHead(405, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Method not allowed' }))
+            return
+          }
+
+          let body = ''
+          req.on('data', chunk => { body += chunk })
+          req.on('end', async () => {
+            try {
+              const { model, messages, max_tokens } = JSON.parse(body)
+
+              // 从 .env.local 读取 API Key（服务端，不暴露到前端）
+              const apiKey = env.VITE_GLM_API_KEY || ''
+              if (!apiKey) {
+                res.writeHead(500, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ error: '未配置 VITE_GLM_API_KEY，请在 .env.local 中设置' }))
+                return
+              }
+
+              // 调用智谱 GLM-4V API（OpenAI 兼容格式）
+              const glmRes = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({ model: model || 'glm-4v-plus', messages, max_tokens }),
+              })
+
+              const data = await glmRes.json()
+              res.writeHead(glmRes.status, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify(data))
+            } catch (e) {
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: String(e) }))
+            }
+          })
+        })
+
         function updateAlbumConfig(album: string, newFiles: { name: string; path: string }[]) {
           const galleryPath = path.join(__dirname, 'src', 'pages', 'GalleryPage.tsx')
           let content = fs.readFileSync(galleryPath, 'utf-8')
