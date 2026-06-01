@@ -205,6 +205,55 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
   }
 }
 
+// ─── 通过腾讯云 OCR 识别表格 ─────────────────────
+async function analyzeImageTencent(base64Image: string): Promise<AnalysisResult> {
+  const response = await fetch('/api/tencent-ocr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64: base64Image }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`腾讯云 OCR 服务错误 ${response.status}: ${errText}`);
+  }
+
+  const data: any = await response.json();
+  // 腾讯云返回结构：data.Response.TableDetectInfos[0].Cells
+  const resp = data.Response;
+  if (!resp || resp.Error) {
+    throw new Error(`腾讯云 OCR 识别失败：${resp?.Error?.Message || '未知错误'}`);
+  }
+
+  // 解析腾讯云返回的单元格数据
+  const cells: any[] = resp.TableDetectInfos?.[0]?.Cells || [];
+  if (!cells.length) {
+    throw new Error('腾讯云 OCR 未识别到任何表格');
+  }
+
+  // 根据单元格的 RowIndex/ColIndex 重建表格
+  const maxRow = Math.max(...cells.map(c => c.RowIndex ?? 0));
+  const maxCol = Math.max(...cells.map(c => c.ColIndex ?? 0));
+  const headers: string[] = [];
+  const rows: string[][] = [];
+
+  for (let r = 0; r <= maxRow; r++) {
+    const rowCells = cells.filter(c => (c.RowIndex ?? 0) === r).sort((a, b) => (a.ColIndex ?? 0) - (b.ColIndex ?? 0));
+    const rowData = new Array(maxCol + 1).fill('');
+    rowCells.forEach(c => { rowData[c.ColIndex ?? 0] = c.Text ?? ''; });
+    if (r === 0) {
+      rowData.forEach((v, i) => { headers[i] = v || `列${i + 1}`; });
+    } else {
+      rows.push(rowData);
+    }
+  }
+
+  return {
+    tables: [{ title: '识别结果', headers, rows }],
+    description: '腾讯云 OCR 识别结果',
+  };
+}
+
 // ─── 主组件 ──────────────────────────────────────
 export default function ImageToExcelPage() {
   const [step, setStep] = useState<Step>('upload');
@@ -215,6 +264,7 @@ export default function ImageToExcelPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState('');
   const [editingCell, setEditingCell] = useState<{ tableIdx: number; rowIdx: number; colIdx: number } | null>(null);
+  const [ocrMode, setOcrMode] = useState<'ai' | 'tencent'>('ai');  // 识别模式切换
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -228,12 +278,20 @@ export default function ImageToExcelPage() {
     setProgress('正在读取图片（自动校正方向）...');
 
     try {
-      setProgress('正在调用 AI 识别...');
       const { base64, mimeType } = await fileToBase64(file);
-      setProgress('AI 识别中...');
-      const analysisResult = await analyzeImageWithAI(base64, mimeType);
-      setResult(analysisResult);
-      setStep('preview');
+
+      if (ocrMode === 'tencent') {
+        setProgress('正在调用腾讯云 OCR 识别...');
+        const analysisResult = await analyzeImageTencent(base64);
+        setResult(analysisResult);
+        setStep('preview');
+      } else {
+        setProgress('正在调用 AI 识别...');
+        setProgress('AI 识别中...');
+        const analysisResult = await analyzeImageWithAI(base64, mimeType);
+        setResult(analysisResult);
+        setStep('preview');
+      }
     } catch (e: any) {
       setErrorMsg(e.message || '识别失败');
       setStep('error');
@@ -314,6 +372,35 @@ export default function ImageToExcelPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">图片转 Excel</h1>
           <p className="text-gray-500">上传包含表格的图片，AI 自动识别并生成 Excel 文件</p>
           <p className="text-xs text-gray-400 mt-1">✅ 已启用自动方向校正（EXIF 旋转检测）</p>
+        </div>
+
+        {/* OCR 模式切换 */}
+        <div className="flex justify-center">
+          <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+            <button
+              onClick={() => setOcrMode('ai')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                ocrMode === 'ai'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              🤖 AI 识别（GLM-5V）
+            </button>
+            <button
+              onClick={() => setOcrMode('tencent')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                ocrMode === 'tencent'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              ☁️ 腾讯云 OCR（手写优先）
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-2 text-center w-full">
+            {ocrMode === 'tencent' ? '✅ 手写表格推荐用腾讯云 OCR' : '✅ 印刷体表格推荐用 AI 识别'}
+          </p>
         </div>
 
         {/* ═══ 步骤1：上传 ══════════════════════ */}
