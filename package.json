@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
+    "cors": "^2.8.6",
     "exif-js": "^2.3.0",
+    "express": "^5.2.1",
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1",
     "marked": "^18.0.2",
@@ -23,6 +25,7 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "tencentcloud-sdk-nodejs": "^4.1.240",
+    "tencentcloud-sdk-nodejs-ocr": "^4.1.233",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
