@@ -234,15 +234,6 @@ function parseCellsToTables(cells: any[]): AnalysisResult {
 }
 
 // ─── 通过腾讯云 OCR 识别表格 ─────────────────────
-// 动态导入 JSZip（只在腾讯云模式下才加载）
-let jszipPromise: Promise<any> | null = null;
-function getJSZip() {
-  if (!jszipPromise) {
-    jszipPromise = import('jszip');
-  }
-  return jszipPromise;
-}
-
 async function analyzeImageTencent(base64Image: string): Promise<AnalysisResult> {
   const response = await fetch('/api/tencent-ocr', {
     method: 'POST',
@@ -317,152 +308,11 @@ async function analyzeImageTencent(base64Image: string): Promise<AnalysisResult>
       description: '腾讯云 OCR 识别结果（xlsx 格式）',
     };
   } catch (e: any) {
-    console.error('xlsx 解析失败，尝试其他方法：', e);
-    // 如果 xlsx 解析失败，再尝试手动解析 ZIP
+    console.error('xlsx 解析失败：', e);
+    throw new Error('腾讯云 OCR 识别结果解析失败：' + String(e.message || e));
   }
 }
 
-// 解析腾讯云 OCR Result.json 的可能结构
-function parseTencentJsonResult(json: any): any {
-  // 可能直接是表格数组
-  if (Array.isArray(json)) {
-    return json;
-  }
-  // 可能在 Tables 字段
-  if (json.Tables) return json.Tables;
-  if (json.tables) return json.tables;
-  // 可能在 TableDetectInfos 字段
-  if (json.TableDetectInfos) return json.TableDetectInfos;
-  // 可能在 Response 字段（嵌套了一层）
-  if (json.Response) return parseTencentJsonResult(json.Response);
-  return null;
-}
-
-// 将腾讯云 OCR 解析结果转为 AnalysisResult
-function parseTencentResult(data: any): AnalysisResult {
-  // data 可能是 TableDetectInfos 数组，或包含 Cells 的对象
-  const tables = Array.isArray(data) ? data : [data];
-  const allTables: TableData[] = [];
-
-  for (const tbl of tables) {
-    const cells: any[] = tbl.Cells || tbl.cells || [];
-    if (!cells.length) continue;
-
-    const getRow = (c: any) => c.Row ?? c.RowIndex ?? 0;
-    const getCol = (c: any) => c.Column ?? c.ColIndex ?? 0;
-    const getText = (c: any) => c.Text ?? c.Word ?? c.text ?? '';
-
-    const maxRow = Math.max(...cells.map(getRow));
-    const maxCol = Math.max(...cells.map(getCol));
-    const headers: string[] = [];
-    const rows: string[][] = [];
-
-    for (let r = 0; r <= maxRow; r++) {
-      const rowCells = cells.filter((c: any) => getRow(c) === r).sort((a: any, b: any) => getCol(a) - getCol(b));
-      const rowData = new Array(maxCol + 1).fill('');
-      rowCells.forEach((c: any) => { rowData[getCol(c)] = getText(c); });
-      if (r === 0) {
-        rowData.forEach((v, i) => { headers[i] = v || `列${i + 1}`; });
-      } else {
-        rows.push(rowData);
-      }
-    }
-
-    allTables.push({ title: tbl.Title || tbl.title || '识别结果', headers, rows });
-  }
-
-  if (!allTables.length) {
-    throw new Error('腾讯云 OCR 识别结果为空');
-  }
-
-  return {
-    tables: allTables,
-    description: '腾讯云 OCR 识别结果',
-  };
-}
-
-
-// 解析 xlsx sharedStrings.xml，返回字符串数组（按索引）
-function parseSharedStrings(xmlStr: string): string[] {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlStr, 'application/xml');
-  const sis = doc.getElementsByTagName('si');
-  const result: string[] = [];
-  for (let i = 0; i < sis.length; i++) {
-    const tNodes = sis[i].getElementsByTagName('t');
-    let text = '';
-    for (let j = 0; j < tNodes.length; j++) {
-      text += tNodes[j].textContent || '';
-    }
-    result.push(text);
-  }
-  return result;
-}
-
-// 解析 xlsx sheet1.xml，结合 sharedStrings 返回 AnalysisResult
-function parseSheetXml(xmlStr: string, sharedStrings: string[]): AnalysisResult | null {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlStr, 'application/xml');
-  const cNodes = doc.getElementsByTagName('c');
-  if (!cNodes.length) return null;
-
-  const dimension = doc.getElementsByTagName('dimension')[0];
-  let maxRow = 0, maxCol = 0;
-  if (dimension) {
-    const ref = dimension.getAttribute('ref') || '';
-    const parts = ref.split(':');
-    const endRef = parts[1] || parts[0];
-    maxRow = parseInt(endRef.replace(/[A-Z]/gi, '')) - 1;
-    maxCol = colRefToIndex(endRef.replace(/d/g, ''));
-  }
-
-  const headers: string[] = [];
-  const rowMap: Map<number, string[]> = new Map();
-
-  for (let i = 0; i < cNodes.length; i++) {
-    const c = cNodes[i];
-    const r = c.getAttribute('r') || '';
-    const t = c.getAttribute('t') || '';
-    const vNode = c.getElementsByTagName('v')[0];
-    if (!vNode || !r) continue;
-
-    const col = colRefToIndex(r.replace(/d/g, ''));
-    const row = parseInt(r.replace(/[A-Z]/gi, '')) - 1;
-    let value = vNode.textContent || '';
-
-    if (t === 's') {
-      const idx = parseInt(value);
-      value = sharedStrings[idx] || '';
-    }
-
-    if (row === 0) {
-      headers[col] = value || '';
-    } else {
-      if (!rowMap.has(row)) rowMap.set(row, new Array(maxCol + 1).fill(''));
-      rowMap.get(row)![col] = value;
-    }
-  }
-
-  const rows: string[][] = [];
-  const sortedRowNums = Array.from(rowMap.keys()).sort((a, b) => a - b);
-  for (const rNum of sortedRowNums) {
-    rows.push(rowMap.get(rNum)!);
-  }
-
-  return {
-    tables: [{ title: '腾讯云 OCR 识别结果', headers, rows }],
-    description: '腾讯云 OCR 识别结果（xlsx 格式）',
-  };
-}
-
-// Excel 列引用转索引（A->0, B->1, AA->26, ...）
-function colRefToIndex(ref: string): number {
-  let idx = 0;
-  for (const ch of ref.toUpperCase()) {
-    idx = idx * 26 + (ch.charCodeAt(0) - 64);
-  }
-  return idx - 1;
-}
 
 export default function ImageToExcelPage() {
   const [step, setStep] = useState<Step>('upload');

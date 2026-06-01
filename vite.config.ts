@@ -5,6 +5,49 @@ import path from 'path'
 
 const env = loadEnv('', process.cwd(), '')
 
+// ─── 更新相册配置（顶层函数）────────────
+function updateAlbumConfig(album: string, newFiles: { name: string; path: string }[]) {
+  const galleryPath = path.join(__dirname, 'src', 'pages', 'GalleryPage.tsx')
+  let content = fs.readFileSync(galleryPath, 'utf-8')
+  const albumKey = `'${album.replace(/'/g, "\\'")}'`
+  const keyIdx = content.indexOf(albumKey)
+  if (keyIdx === -1) {
+    const newEntries = newFiles.map(f =>
+      `      { src: '/images/${album}/${f.name.replace(/'/g, "\\'")}', caption: '${f.name.replace(/\.[^.]+$/, '').replace(/'/g, "\\'")}' },\n`
+    ).join('')
+    const lastBracket = content.lastIndexOf('  },\n}')
+    if (lastBracket !== -1) {
+      content = content.slice(0, lastBracket) +
+        `  '${album}': {\n` +
+        `    title: '${album}',\n` +
+        `    description: '${album}不良记录图片',\n` +
+        `    cover: '/images/${album}/${newFiles[0].name.replace(/'/g, "\\'")}',\n` +
+        `    images: [\n${newEntries}` +
+        `    ],\n` +
+        `  },\n` +
+        content.slice(lastBracket)
+      fs.writeFileSync(galleryPath, content)
+      console.log(`Created new album: ${album}`)
+    }
+    return
+  }
+  const searchStart = content.indexOf('images:', keyIdx)
+  if (searchStart === -1) return
+  const arrStart = content.indexOf('[', searchStart)
+  if (arrStart === -1) return
+  let depth = 0, arrEnd = arrStart
+  for (let i = arrStart + 1; i < content.length; i++) {
+    if (content[i] === '[') depth++
+    else if (content[i] === ']') { if (depth === 0) { arrEnd = i; break }; depth-- }
+  }
+  const arrContent = content.slice(arrStart + 1, arrEnd)
+  const newEntries = newFiles.map(f =>
+    `      { src: '/images/${album}/${f.name.replace(/'/g, "\\'")}', caption: '${f.name.replace(/\.[^.]+$/, '').replace(/'/g, "\\'")}' },\n`
+  ).join('')
+  content = content.slice(0, arrEnd) + (arrContent.trim() ? '\n' : '') + newEntries + content.slice(arrEnd)
+  fs.writeFileSync(galleryPath, content)
+}
+
 export default defineConfig({
   plugins: [
     react(),
@@ -123,49 +166,6 @@ export default defineConfig({
             }
           })
         })
-      },
-
-      // 更新相册配置
-      updateAlbumConfig(album: string, newFiles: { name: string; path: string }[]) {
-        const galleryPath = path.join(__dirname, 'src', 'pages', 'GalleryPage.tsx')
-        let content = fs.readFileSync(galleryPath, 'utf-8')
-        const albumKey = `'${album.replace(/'/g, "\\'")}'`
-        const keyIdx = content.indexOf(albumKey)
-        if (keyIdx === -1) {
-          const newEntries = newFiles.map(f =>
-            `      { src: '/images/${album}/${f.name.replace(/'/g, "\\'")}', caption: '${f.name.replace(/\.[^.]+$/, '').replace(/'/g, "\\'")}' },\n`
-          ).join('')
-          const lastBracket = content.lastIndexOf('  },\n}')
-          if (lastBracket !== -1) {
-            content = content.slice(0, lastBracket) +
-              `  '${album}': {\n` +
-              `    title: '${album}',\n` +
-              `    description: '${album}不良记录图片',\n` +
-              `    cover: '/images/${album}/${newFiles[0].name.replace(/'/g, "\\'")}',\n` +
-              `    images: [\n${newEntries}` +
-              `    ],\n` +
-              `  },\n` +
-              content.slice(lastBracket)
-            fs.writeFileSync(galleryPath, content)
-            console.log(`Created new album: ${album}`)
-          }
-          return
-        }
-        const searchStart = content.indexOf('images:', keyIdx)
-        if (searchStart === -1) return
-        const arrStart = content.indexOf('[', searchStart)
-        if (arrStart === -1) return
-        let depth = 0, arrEnd = arrStart
-        for (let i = arrStart + 1; i < content.length; i++) {
-          if (content[i] === '[') depth++
-          else if (content[i] === ']') { if (depth === 0) { arrEnd = i; break }; depth-- }
-        }
-        const arrContent = content.slice(arrStart + 1, arrEnd)
-        const newEntries = newFiles.map(f =>
-          `      { src: '/images/${album}/${f.name.replace(/'/g, "\\'")}', caption: '${f.name.replace(/\.[^.]+$/, '').replace(/'/g, "\\'")}' },\n`
-        ).join('')
-        content = content.slice(0, arrEnd) + (arrContent.trim() ? '\n' : '') + newEntries + content.slice(arrEnd)
-        fs.writeFileSync(galleryPath, content)
       },
     },
   ],
