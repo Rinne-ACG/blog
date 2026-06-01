@@ -183,7 +183,7 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
           ],
         },
       ],
-      max_tokens: 4096,
+      max_tokens: 16384,
     }),
   });
 
@@ -193,7 +193,42 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
   }
 
   const data: any = await response.json();
-  const content: string = data?.choices?.[0]?.message?.content ?? '';
+  let content: string = data?.choices?.[0]?.message?.content ?? '';
+
+  // 如果 JSON 被截断，尝试自动续接
+  if (content && !content.trim().endsWith('}')) {
+    console.warn('[AI识别] JSON 可能被截断，尝试续接...');
+    // 最多续接 2 次
+    for (let i = 0; i < 2; i++) {
+      const followUp = await fetch('/api/ai-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'glm-5v-turbo',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } },
+                { type: 'text', text: prompt },
+              ],
+            },
+            { role: 'assistant', content: content },
+            { role: 'user', text: '请继续输出上面未完成的 JSON，只输出剩余部分，不要重复已输出的内容，不要加任何说明。' },
+          ],
+          max_tokens: 16384,
+        }),
+      });
+      if (followUp.ok) {
+        const fd: any = await followUp.json();
+        const extra = fd?.choices?.[0]?.message?.content ?? '';
+        content += extra;
+        if (content.trim().endsWith('}')) break;
+      } else {
+        break;
+      }
+    }
+  }
   if (!content) {
     throw new Error(`AI 返回内容为空，完整响应：${JSON.stringify(data).slice(0, 500)}`);
   }
