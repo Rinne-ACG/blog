@@ -15,34 +15,18 @@ interface AnalysisResult {
 
 type Step = 'upload' | 'analyzing' | 'preview' | 'error';
 
-// 压缩图片：限制最大宽度/高度为 1024px，降低质量减少 base64 体积
-function compressImage(file: File, maxSize = 1024, quality = 0.85): Promise<string> {
+// 直接将图片文件转为 base64（不压缩，保留原图质量）
+function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const canvas = document.createElement('canvas');
-      let { width, height } = img;
-      if (width > maxSize || height > maxSize) {
-        if (width > height) {
-          height = Math.round((height * maxSize) / width);
-          width = maxSize;
-        } else {
-          width = Math.round((width * maxSize) / height);
-          height = maxSize;
-        }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject(new Error('canvas 不支持')); return; }
-      ctx.drawImage(img, 0, 0, width, height);
-      const dataUrl = canvas.toDataURL('image/jpeg', quality);
-      resolve(dataUrl.split(',')[1]);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string; // data:mime;base64,...
+      const mimeType = result.match(/^data:(.*);base64,/)?.[1] || file.type || 'image/jpeg';
+      const base64 = result.split(',')[1];
+      resolve({ base64, mimeType });
     };
-    img.onerror = reject;
-    img.src = url;
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
 }
 
@@ -169,8 +153,9 @@ export default function ImageToExcelPage() {
     setProgress('正在上传图片并调用 AI 识别...');
 
     try {
-      const base64 = await compressImage(file);
-      const mimeType = 'image/jpeg'; // compressImage 输出 jpeg
+      setProgress('正在读取图片并调用 AI 识别...');
+      const { base64, mimeType } = await fileToBase64(file);
+      setProgress('正在调用 AI 识别...');
       const analysisResult = await analyzeImageWithAI(base64, mimeType);
       setResult(analysisResult);
       setStep('preview');
