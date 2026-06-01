@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import EXIF from 'exif-js';
 
-// ─── 类型定义 ────────────────────────────────────────
+// ─── 类型定义 ──────────────────────────────────
 interface TableData {
   headers: string[];
   rows: (string | number)[][];
@@ -15,19 +16,93 @@ interface AnalysisResult {
 
 type Step = 'upload' | 'analyzing' | 'preview' | 'error';
 
-// 直接将图片文件转为 base64（不压缩，保留原图质量）
-function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
-  return new Promise((resolve, reject) => {
+/**
+ * 读取图片 EXIF 方向标签
+ * 返回 orientation 值（1=正常，6=顺时针90°，8=逆时针90°，3=180°）
+ */
+function getEXIFOrientation(file: File): Promise<number> {
+  return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const result = reader.result as string; // data:mime;base64,...
-      const mimeType = result.match(/^data:(.*);base64,/)?.[1] || file.type || 'image/jpeg';
-      const base64 = result.split(',')[1];
-      resolve({ base64, mimeType });
+      try {
+        const buffer = reader.result as ArrayBuffer;
+        const orientation = EXIF.getTag(new Uint8Array(buffer), 'Orientation');
+        resolve(orientation ?? 1);
+      } catch {
+        resolve(1);
+      }
     };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    reader.onerror = () => resolve(1);
+    // 只读取前 128KB 足够了（EXIF 在文件头部）
+    const slice = file.slice(0, 131072);
+    reader.readAsArrayBuffer(slice);
   });
+}
+
+/**
+ * 根据 EXIF orientation 旋转图片，返回校正后的 data URL（image/jpeg）
+ */
+function rotateImageByEXIF(file: File, orientation: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const { width, height } = img;
+
+      // 根据 orientation 决定画布尺寸和变换矩阵
+      let canvasW = width, canvasH = height;
+      const needSwap = orientation >= 5 && orientation <= 8;
+      if (needSwap) { canvasW = height; canvasH = width; }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('canvas 不支持')); return; }
+
+      // 先平移原点到画布中心，再旋转，再平移回去
+      ctx.translate(canvasW / 2, canvasH / 2);
+
+      switch (orientation) {
+        case 2:  ctx.scale(-1, 1); break;                       // 水平翻转
+        case 3:  ctx.rotate(Math.PI); break;                         // 180°
+        case 4:  ctx.scale(1, -1); break;                         // 垂直翻转
+        case 5:  ctx.rotate(0.5 * Math.PI); ctx.scale(1, -1); break;
+        case 6:  ctx.rotate(0.5 * Math.PI); break;               // 顺时针 90°
+        case 7:  ctx.rotate(-0.5 * Math.PI); ctx.scale(1, -1); break;
+        case 8:  ctx.rotate(-0.5 * Math.PI); break;              // 逆时针 90°
+        default: break;
+      }
+
+      ctx.drawImage(img, -width / 2, -height / 2);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      resolve(dataUrl);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// 直接将图片文件转为 base64（自动 EXIF 旋转校正）
+async function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
+  const orientation = await getEXIFOrientation(file);
+  let dataUrl: string;
+
+  if (orientation >= 2) {
+    dataUrl = await rotateImageByEXIF(file, orientation);
+  } else {
+    dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const mimeType = dataUrl.match(/^data:(.*?);base64,/)?.[1] ?? 'image/jpeg';
+  const base64 = dataUrl.split(',')[1];
+  return { base64, mimeType };
 }
 
 function downloadExcel(tables: TableData[], filename: string) {
@@ -47,7 +122,7 @@ function downloadExcel(tables: TableData[], filename: string) {
   XLSX.writeFile(wb, `${filename}_${today}.xlsx`);
 }
 
-// ─── 通过 Vite 代理调用 AI（开发环境）────────────────
+// ─── 通过 Vite 代理调用 AI ────────────────────────
 async function analyzeImageWithAI(base64Image: string, mimeType: string): Promise<AnalysisResult> {
   const prompt = `你是一个专业的表格识别助手。用户上传的是一张纸质表格的照片，请仔细识别图片中的表格结构，并以严格的 JSON 格式返回结果。
 
@@ -111,7 +186,7 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
     throw new Error(`AI 返回内容为空，完整响应：${JSON.stringify(data).slice(0, 500)}`);
   }
 
-  // 清洗 markdown 代码块包裹：去掉开头 ```json 或 ```，去掉结尾 ```
+  // 清洗 markdown 代码块包裹
   let cleaned = content;
   cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '');
   cleaned = cleaned.replace(/\n?\s*```\s*$/, '');
@@ -130,7 +205,7 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
   }
 }
 
-// ─── 主组件 ────────────────────────────────────────
+// ─── 主组件 ──────────────────────────────────────
 export default function ImageToExcelPage() {
   const [step, setStep] = useState<Step>('upload');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -150,12 +225,12 @@ export default function ImageToExcelPage() {
     setImageFile(file);
     setImagePreviewUrl(URL.createObjectURL(file));
     setStep('analyzing');
-    setProgress('正在上传图片并调用 AI 识别...');
+    setProgress('正在读取图片（自动校正方向）...');
 
     try {
-      setProgress('正在读取图片并调用 AI 识别...');
-      const { base64, mimeType } = await fileToBase64(file);
       setProgress('正在调用 AI 识别...');
+      const { base64, mimeType } = await fileToBase64(file);
+      setProgress('AI 识别中...');
       const analysisResult = await analyzeImageWithAI(base64, mimeType);
       setResult(analysisResult);
       setStep('preview');
@@ -230,7 +305,7 @@ export default function ImageToExcelPage() {
     });
   }, []);
 
-  // ─── 渲染 ────────────────────────────────────────
+  // ─── 渲染 ──────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 p-6">
       <div className="max-w-5xl mx-auto space-y-8">
@@ -238,9 +313,10 @@ export default function ImageToExcelPage() {
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">图片转 Excel</h1>
           <p className="text-gray-500">上传包含表格的图片，AI 自动识别并生成 Excel 文件</p>
+          <p className="text-xs text-gray-400 mt-1">✅ 已启用自动方向校正（EXIF 旋转检测）</p>
         </div>
 
-        {/* ═══ 步骤1：上传 ════════════════════════ */}
+        {/* ═══ 步骤1：上传 ══════════════════════ */}
         {step === 'upload' && (
           <div
             onDrop={handleDrop}
@@ -254,18 +330,18 @@ export default function ImageToExcelPage() {
             <div className="flex flex-col items-center gap-4">
               <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center">
                 <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l-2.586-2.586a2 2 0 00-2.828 0L6 18m8-2l.01-0.01M3 3h18v18H3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l-2.586-2.586a2 2 0 00-2.828 0L6 18m8-2l.01-.01M3 3h18v18H3z" />
                 </svg>
               </div>
               <div>
                 <p className="text-lg font-semibold text-gray-700">拖拽图片到这里，或点击上传</p>
-                <p className="text-sm text-gray-400 mt-1">支持 JPG / PNG / BMP / WebP</p>
+                <p className="text-sm text-gray-400 mt-1">支持 JPG / PNG / BMP / WebP（自动校正拍摄方向）</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* ═══ 步骤2：识别中 ════════════════════════ */}
+        {/* ═══ 步骤2：识别中 ══════════════════════ */}
         {step === 'analyzing' && (
           <div className="flex flex-col items-center gap-6 py-12">
             <div className="relative">
@@ -281,7 +357,7 @@ export default function ImageToExcelPage() {
           </div>
         )}
 
-        {/* ═══ 步骤3：预览 & 编辑 ════════════════════════ */}
+        {/* ═══ 步骤3：预览 & 编辑 ══════════════════════ */}
         {step === 'preview' && result && (
           <div className="space-y-6">
             {/* 顶部信息栏 */}
@@ -390,7 +466,7 @@ export default function ImageToExcelPage() {
           </div>
         )}
 
-        {/* ═══ 步骤4：错误 ════════════════════════ */}
+        {/* ═══ 步骤4：错误 ══════════════════════ */}
         {step === 'error' && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto">
