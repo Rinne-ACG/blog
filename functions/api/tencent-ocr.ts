@@ -1,7 +1,6 @@
 /**
  * 腾讯云表格识别 OCR — Cloudflare Pages Function（生产环境）
  * 通过腾讯云 API v3 签名调用 RecognizeTableOCR
- * 开发环境代理在 vite.config.ts，生产环境走这个 Function
  */
 import crypto from 'crypto';
 
@@ -13,23 +12,27 @@ function buildTencentAuth(
   payload: string,
   timestamp: number,
 ): string {
-  const date = new Date(timestamp * 1000).toISOString().slice(0, 10).replace(/-/g, '');
-  const credentialScope = `${date}/${service}/tc3_request`;
+  const d = new Date(timestamp * 1000);
+  const date = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  const credentialScope = date + '/' + service + '/tc3_request';
   const hashedPayload = crypto.createHash('sha256').update(payload).digest('hex');
-  const canonicalRequest = [
-    'POST', '/', '',
-    'content-type:application/json; charset=utf-8',
-    `host:${service}.tencentcloudapi.com`,
-    '', 'content-type;host', hashedPayload,
-  ].join('\n');
+  const canonicalRequest =
+    'POST' + '\n' +
+    '/' + '\n' +
+    '' + '\n' +
+    'content-type:application/json; charset=utf-8' + '\n' +
+    'host:' + service + '.tencentcloudapi.com' + '\n' +
+    '' + '\n' +
+    'content-type;host' + '\n' +
+    hashedPayload;
   const algorithm = 'TC3-HMAC-SHA256';
   const hashedCanonical = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
-  const stringToSign = [algorithm, timestamp, credentialScope, hashedCanonical].join('\n');
-  const kDate = crypto.createHmac('sha256', `TC3${secretKey}`).update(date).digest();
+  const stringToSign = algorithm + '\n' + timestamp + '\n' + credentialScope + '\n' + hashedCanonical;
+  const kDate = crypto.createHmac('sha256', 'TC3' + secretKey).update(date).digest();
   const kService = crypto.createHmac('sha256', kDate).update(service).digest();
   const kSigning = crypto.createHmac('sha256', kService).update('tc3_request').digest();
   const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
-  return `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=content-type;host, Signature=${signature}`;
+  return algorithm + ' Credential=' + secretId + '/' + credentialScope + ', SignedHeaders=content-type;host, Signature=' + signature;
 }
 
 export async function onRequestPost(context: any) {
@@ -48,7 +51,7 @@ export async function onRequestPost(context: any) {
   try {
     body = await request.json();
   } catch {
-    return new Response(JSON.stringify({ error: '无效的 JSON 请求体' }), {
+    return new Response(JSON.stringify({ error: '无效的 JSON' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });

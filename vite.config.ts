@@ -141,7 +141,8 @@ export default defineConfig({
           payload: string,
           timestamp: number,
         ): string {
-          const date = new Date(timestamp * 1000).toISOString().slice(0, 10).replace(/-/g, '')
+          const d = new Date(timestamp * 1000)
+          const date = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
           const credentialScope = `${date}/${service}/tc3_request`
           const hashedPayload = crypto.createHash('sha256').update(payload).digest('hex')
           const canonicalRequest = [
