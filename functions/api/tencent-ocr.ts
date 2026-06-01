@@ -1,44 +1,35 @@
 /**
- * 腾讯云通用表格识别 OCR — Cloudflare Pages Function（生产环境）
- * 通过腾讯云 API v3 签名调用 GeneralTableOCR
+ * 腾讯云表格识别 OCR — Cloudflare Pages Function（生产环境）
+ * 通过腾讯云 API v3 签名调用 RecognizeTableOCR
+ * 开发环境代理在 vite.config.ts，生产环境走这个 Function
  */
 import crypto from 'crypto';
 
-// ─── 腾讯云 API v3 签名（Node.js crypto，Cloudflare Workers 兼容） ───
-function sign(key: string, msg: string): string {
-  return crypto.createHmac('sha256', key).update(msg).digest('hex');
-}
-
-function getSignature(secretKey: string, date: string, service: string, stringToSign: string): string {
-  const kDate = sign(`TC3${secretKey}`, date);
-  const kService = sign(kDate, service);
-  const kSigning = sign(kService, 'tc3_request');
-  return sign(kSigning, stringToSign);
-}
-
-function buildAuth(secretId: string, secretKey: string, service: string, region: string, payload: string): string {
-  const timestamp = Math.floor(Date.now() / 1000);
+// ─── 腾讯云 API v3 签名（与 vite.config.ts 保持一致） ───
+function buildTencentAuth(
+  secretId: string,
+  secretKey: string,
+  service: string,
+  payload: string,
+  timestamp: number,
+): string {
   const date = new Date(timestamp * 1000).toISOString().slice(0, 10).replace(/-/g, '');
   const credentialScope = `${date}/${service}/tc3_request`;
-
   const hashedPayload = crypto.createHash('sha256').update(payload).digest('hex');
   const canonicalRequest = [
-    'POST',
-    '/',
-    '',
-    `content-type:application/json; charset=utf-8`,
+    'POST', '/', '',
+    'content-type:application/json; charset=utf-8',
     `host:${service}.tencentcloudapi.com`,
-    '',
-    'content-type;host',
-    hashedPayload,
+    '', 'content-type;host', hashedPayload,
   ].join('\n');
-
+  const algorithm = 'TC3-HMAC-SHA256';
   const hashedCanonical = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
-  const stringToSign = [`TC3-HMAC-SHA256`, timestamp, credentialScope, hashedCanonical].join('\n');
-
-  const signature = getSignature(secretKey, date, service, stringToSign);
-
-  return `TC3-HMAC-SHA256 Credential=${secretId}/${credentialScope}, SignedHeaders=content-type;host, Signature=${signature}`;
+  const stringToSign = [algorithm, timestamp, credentialScope, hashedCanonical].join('\n');
+  const kDate = crypto.createHmac('sha256', `TC3${secretKey}`).update(date).digest();
+  const kService = crypto.createHmac('sha256', kDate).update(service).digest();
+  const kSigning = crypto.createHmac('sha256', kService).update('tc3_request').digest();
+  const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+  return `${algorithm} Credential=${secretId}/${credentialScope}, SignedHeaders=content-type;host, Signature=${signature}`;
 }
 
 export async function onRequestPost(context: any) {
@@ -72,8 +63,8 @@ export async function onRequestPost(context: any) {
   }
 
   const payload = JSON.stringify({ ImageBase64: imageBase64 });
-
-  const auth = buildAuth(secretId, secretKey, 'ocr', 'ap-guangzhou', payload);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const auth = buildTencentAuth(secretId, secretKey, 'ocr', payload, timestamp);
 
   try {
     const ocrRes = await fetch('https://ocr.tencentcloudapi.com', {
@@ -81,11 +72,11 @@ export async function onRequestPost(context: any) {
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
         'Host': 'ocr.tencentcloudapi.com',
-        'X-TC-Action': 'GeneralTableOCR',
+        'X-TC-Action': 'RecognizeTableOCR',
         'X-TC-Version': '2018-11-19',
         'X-TC-Region': 'ap-guangzhou',
         'Authorization': auth,
-        'X-TC-Timestamp': String(Math.floor(Date.now() / 1000)),
+        'X-TC-Timestamp': String(timestamp),
       },
       body: payload,
     });
