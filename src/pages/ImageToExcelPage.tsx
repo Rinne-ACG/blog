@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import EXIF from 'exif-js';
 
-// ─── 类型定义 ──────────────────────────────────
+// ─── 类型定义 ──────────────────────────
 interface TableData {
   headers: string[];
   rows: (string | number)[][];
@@ -122,7 +122,7 @@ function downloadExcel(tables: TableData[], filename: string) {
   XLSX.writeFile(wb, `${filename}_${today}.xlsx`);
 }
 
-// ─── 通过 Vite 代理调用 AI ────────────────────────
+// ─── 通过 Vite 代理调用 AI ─────────────────────
 async function analyzeImageWithAI(base64Image: string, mimeType: string): Promise<AnalysisResult> {
   const prompt = `你是一个专业的表格识别助手。用户上传的是一张纸质表格的照片，请仔细识别图片中的表格结构，并以严格的 JSON 格式返回结果。
 
@@ -205,36 +205,8 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
   }
 }
 
-// ─── 通过腾讯云 OCR 识别表格 ─────────────────────
-async function analyzeImageTencent(base64Image: string): Promise<AnalysisResult> {
-  const response = await fetch('/api/tencent-ocr', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageBase64: base64Image }),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`腾讯云 OCR 服务错误 ${response.status}: ${errText}`);
-  }
-
-  const data: any = await response.json();
-  console.log('【腾讯云 OCR 原始返回】', JSON.stringify(data, null, 2).slice(0, 3000));
-
-  const resp = data.Response;
-  if (!resp || resp.Error) {
-    throw new Error(`腾讯云 OCR 识别失败：${resp?.Error?.Message || '未知错误'}`);
-  }
-
-  // 解析腾讯云返回的单元格数据
-  // RecognizeTableOCR 返回：Response.TableDetectInfos[0].Cells
-  // 每个 Cell 字段可能是 Row/Column 或 RowIndex/ColIndex
-  const cells: any[] = resp.TableDetectInfos?.[0]?.Cells || [];
-  if (!cells.length) {
-    throw new Error('腾讯云 OCR 未识别到任何表格');
-  }
-
-  // 判断字段名（腾讯云不同版本字段名可能不同）
+// ─── 解析单元格数组为表格数据（多个地方复用）───
+function parseCellsToTables(cells: any[]): AnalysisResult {
   const getRow = (c: any) => (typeof c.Row === 'number' ? c.Row : typeof c.RowIndex === 'number' ? c.RowIndex : 0);
   const getCol = (c: any) => (typeof c.Column === 'number' ? c.Column : typeof c.ColIndex === 'number' ? c.ColIndex : 0);
   const getText = (c: any) => c.Text ?? c.Word ?? '';
@@ -261,7 +233,181 @@ async function analyzeImageTencent(base64Image: string): Promise<AnalysisResult>
   };
 }
 
-// ─── 主组件 ──────────────────────────────────────
+// ─── 通过腾讯云 OCR 识别表格 ─────────────────────
+// 动态导入 JSZip（只在腾讯云模式下才加载）
+let jszipPromise: Promise<any> | null = null;
+function getJSZip() {
+  if (!jszipPromise) {
+    jszipPromise = import('jszip');
+  }
+  return jszipPromise;
+}
+
+async function analyzeImageTencent(base64Image: string): Promise<AnalysisResult> {
+  const response = await fetch('/api/tencent-ocr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64: base64Image }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`腾讯云 OCR 服务错误 ${response.status}: ${errText}`);
+  }
+
+  const data: any = await response.json();
+  console.log('【腾讯云 OCR 原始返回】', JSON.stringify(data, null, 2).slice(0, 3000));
+
+  const resp = data.Response;
+  if (!resp || resp.Error) {
+    throw new Error(`腾讯云 OCR 识别失败：${resp?.Error?.Message || '未知错误'}`);
+  }
+
+  // ── 情况1：直接返回 TableDetectInfos（旧版 API）───
+  const tableInfos: any[] = resp.TableDetectInfos || [];
+  if (tableInfos.length) {
+    const cells: any[] = tableInfos[0]?.Cells || [];
+    if (cells.length) {
+      return parseCellsToTables(cells);
+    }
+  }
+
+  // ── 情况2：返回 Data 字段（base64 编码的 ZIP 文件，新版 API）───
+  const dataB64: string = resp.Data;
+  if (!dataB64) {
+    throw new Error('腾讯云 OCR 未识别到任何表格');
+  }
+
+  // 解码 Data 字段（ZIP 文件）
+  const binaryStr = atob(dataB64);
+  const zipBuf = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) {
+    zipBuf[i] = binaryStr.charCodeAt(i);
+  }
+
+  const JSZip = (await getJSZip()).default;
+  const zip = await JSZip.loadAsync(zipBuf);
+  console.log('ZIP 内文件列表：', Object.keys(zip.files));
+
+  let resultJson: any = null;
+
+  // 优先找 Result.json（新版 API 返回格式）
+  if (zip.files['Result.json']) {
+    const jsonStr = await zip.files['Result.json'].async('string');
+    resultJson = JSON.parse(jsonStr);
+    console.log('Result.json 解析结果：', JSON.stringify(resultJson).slice(0, 500));
+  }
+
+  // 若没有 Result.json，尝试解析 XML 文件（旧版 API）
+  if (!resultJson) {
+    for (const [name, file] of Object.entries(zip.files)) {
+      const f = file as any;
+      if (f.dir) continue;
+      if (name.endsWith('.xml') || name.endsWith('.XML')) {
+        const xmlStr = await f.async('string');
+        console.log(`XML 文件 ${name} 内容（前 500 字符）：`, xmlStr.slice(0, 500));
+        // 尝试从 XML 中提取单元格数据
+        const parsed = parseTencentXmlResult(xmlStr);
+        if (parsed) { resultJson = parsed; break; }
+      }
+      // 尝试解析 JSON 文件
+      if (name.endsWith('.json')) {
+        try {
+          const jsonStr = await f.async('string');
+          const json = JSON.parse(jsonStr);
+          console.log(`JSON 文件 ${name}：`, JSON.stringify(json).slice(0, 300));
+          const parsed = parseTencentJsonResult(json);
+          if (parsed) { resultJson = parsed; break; }
+        } catch { /* 不是合法 JSON，跳过 */ }
+      }
+    }
+  }
+
+  if (!resultJson) {
+    throw new Error('腾讯云 OCR 返回了 ZIP 但无法解析其中的表格数据，请检查控制台日志');
+  }
+
+  // 从解析结果中提取表格
+  return parseTencentResult(resultJson);
+}
+
+// 解析腾讯云 OCR Result.json 的可能结构
+function parseTencentJsonResult(json: any): any {
+  // 可能直接是表格数组
+  if (Array.isArray(json)) {
+    return json;
+  }
+  // 可能在 Tables 字段
+  if (json.Tables) return json.Tables;
+  if (json.tables) return json.tables;
+  // 可能在 TableDetectInfos 字段
+  if (json.TableDetectInfos) return json.TableDetectInfos;
+  // 可能在 Response 字段（嵌套了一层）
+  if (json.Response) return parseTencentJsonResult(json.Response);
+  return null;
+}
+
+// 将腾讯云 OCR 解析结果转为 AnalysisResult
+function parseTencentResult(data: any): AnalysisResult {
+  // data 可能是 TableDetectInfos 数组，或包含 Cells 的对象
+  const tables = Array.isArray(data) ? data : [data];
+  const allTables: TableData[] = [];
+
+  for (const tbl of tables) {
+    const cells: any[] = tbl.Cells || tbl.cells || [];
+    if (!cells.length) continue;
+
+    const getRow = (c: any) => c.Row ?? c.RowIndex ?? 0;
+    const getCol = (c: any) => c.Column ?? c.ColIndex ?? 0;
+    const getText = (c: any) => c.Text ?? c.Word ?? c.text ?? '';
+
+    const maxRow = Math.max(...cells.map(getRow));
+    const maxCol = Math.max(...cells.map(getCol));
+    const headers: string[] = [];
+    const rows: string[][] = [];
+
+    for (let r = 0; r <= maxRow; r++) {
+      const rowCells = cells.filter((c: any) => getRow(c) === r).sort((a: any, b: any) => getCol(a) - getCol(b));
+      const rowData = new Array(maxCol + 1).fill('');
+      rowCells.forEach((c: any) => { rowData[getCol(c)] = getText(c); });
+      if (r === 0) {
+        rowData.forEach((v, i) => { headers[i] = v || `列${i + 1}`; });
+      } else {
+        rows.push(rowData);
+      }
+    }
+
+    allTables.push({ title: tbl.Title || tbl.title || '识别结果', headers, rows });
+  }
+
+  if (!allTables.length) {
+    throw new Error('腾讯云 OCR 识别结果为空');
+  }
+
+  return {
+    tables: allTables,
+    description: '腾讯云 OCR 识别结果',
+  };
+}
+
+// 简单解析腾讯云 OCR XML 格式
+function parseTencentXml(xmlStr: string): any {
+  const cells: any[] = [];
+  // 匹配 <Cell> 标签中的 Row、Column、Text
+  const cellRegex = /<Cell[^>]*>[\s\S]*?<Row>(\d+)<\/Row>[\s\S]*?<Column>(\d+)<\/Column>[\s\S]*?(?:<Text>([^<]*)<\/Text>)?[\s\S]*?<\/Cell>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = cellRegex.exec(xmlStr)) !== null) {
+    cells.push({
+      Row: parseInt(m[1]) || 0,
+      Column: parseInt(m[2]) || 0,
+      Text: m[3] || '',
+    });
+  }
+  if (cells.length) return { Cells: cells };
+  return null;
+}
+
+// ─── 主组件 ─────────────────────────────────────
 export default function ImageToExcelPage() {
   const [step, setStep] = useState<Step>('upload');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -271,7 +417,7 @@ export default function ImageToExcelPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState('');
   const [editingCell, setEditingCell] = useState<{ tableIdx: number; rowIdx: number; colIdx: number } | null>(null);
-  const [ocrMode, setOcrMode] = useState<'ai' | 'tencent'>('ai');  // 识别模式切换
+  const [ocrMode, setOcrMode] = useState<'ai' | 'tencent'>('ai');
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -370,7 +516,7 @@ export default function ImageToExcelPage() {
     });
   }, []);
 
-  // ─── 渲染 ──────────────────────────────────────
+  // ─── 渲染 ─────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 p-6">
       <div className="max-w-5xl mx-auto space-y-8">
@@ -410,7 +556,7 @@ export default function ImageToExcelPage() {
           </p>
         </div>
 
-        {/* ═══ 步骤1：上传 ══════════════════════ */}
+        {/* ═══ 步骤1：上传 ══════════════════ */}
         {step === 'upload' && (
           <div
             onDrop={handleDrop}
@@ -435,7 +581,7 @@ export default function ImageToExcelPage() {
           </div>
         )}
 
-        {/* ═══ 步骤2：识别中 ══════════════════════ */}
+        {/* ═══ 步骤2：识别中 ══════════════════ */}
         {step === 'analyzing' && (
           <div className="flex flex-col items-center gap-6 py-12">
             <div className="relative">
@@ -451,7 +597,7 @@ export default function ImageToExcelPage() {
           </div>
         )}
 
-        {/* ═══ 步骤3：预览 & 编辑 ══════════════════════ */}
+        {/* ═══ 步骤3：预览 & 编辑 ══════════════════ */}
         {step === 'preview' && result && (
           <div className="space-y-6">
             {/* 顶部信息栏 */}
@@ -560,7 +706,7 @@ export default function ImageToExcelPage() {
           </div>
         )}
 
-        {/* ═══ 步骤4：错误 ══════════════════════ */}
+        {/* ═══ 步骤4：错误 ══════════════════ */}
         {step === 'error' && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto">
