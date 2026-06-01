@@ -307,7 +307,7 @@ async function analyzeImageTencent(base64Image: string): Promise<AnalysisResult>
         const xmlStr = await f.async('string');
         console.log(`XML 文件 ${name} 内容（前 500 字符）：`, xmlStr.slice(0, 500));
         // 尝试从 XML 中提取单元格数据
-        const parsed = parseTencentXmlResult(xmlStr);
+        const parsed = parseTencentXml(xmlStr);
         if (parsed) { resultJson = parsed; break; }
       }
       // 尝试解析 JSON 文件
