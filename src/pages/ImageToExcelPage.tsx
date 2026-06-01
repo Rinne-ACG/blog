@@ -183,7 +183,7 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
           ],
         },
       ],
-      max_tokens: 16384,
+      max_tokens: 32768,
     }),
   });
 
@@ -195,10 +195,25 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
   const data: any = await response.json();
   let content: string = data?.choices?.[0]?.message?.content ?? '';
 
-  // 如果 JSON 被截断，尝试自动续接
-  if (content && !content.trim().endsWith('}')) {
-    console.warn('[AI识别] JSON 可能被截断，尝试续接...');
-    // 最多续接 2 次
+  // 尝试从返回内容中提取完整 JSON
+  const tryExtractJSON = (text: string): string | null => {
+    try { JSON.parse(text); return text; } catch {}
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      const candidate = text.slice(firstBrace, lastBrace + 1);
+      try { JSON.parse(candidate); return candidate; } catch {}
+    }
+    return null;
+  };
+
+  let cleaned = content;
+  let extracted = tryExtractJSON(cleaned);
+
+  if (!extracted) {
+    // JSON 不完整，尝试续接（最多 2 次）
+    console.warn('[AI识别] JSON 不完整，尝试续接...');
+    let current = cleaned;
     for (let i = 0; i < 2; i++) {
       const followUp = await fetch('/api/ai-proxy', {
         method: 'POST',
@@ -206,30 +221,31 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
         body: JSON.stringify({
           model: 'glm-5v-turbo',
           messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } },
-                { type: 'text', text: prompt },
-              ],
-            },
-            { role: 'assistant', content: content },
-            { role: 'user', text: '请继续输出上面未完成的 JSON，只输出剩余部分，不要重复已输出的内容，不要加任何说明。' },
+            { role: 'user', content: prompt },
+            { role: 'assistant', content: current },
+            { role: 'user', content: '请从上面中断的地方继续输出完整的 JSON，只输出剩余部分，不要重复已输出的内容，不要加任何说明。' },
           ],
-          max_tokens: 16384,
+          max_tokens: 32768,
         }),
       });
       if (followUp.ok) {
-        const fd: any = await followUp.json();
+        const fd = await followUp.json();
         const extra = fd?.choices?.[0]?.message?.content ?? '';
-        content += extra;
-        if (content.trim().endsWith('}')) break;
+        current += extra;
+        const retry = tryExtractJSON(current);
+        if (retry) { cleaned = retry; break; }
+        cleaned = current;
       } else {
         break;
       }
     }
+  } else {
+    cleaned = extracted;
   }
-  if (!content) {
+
+  if (!cleaned) {
+    throw new Error(`AI 返回内容无法解析为 JSON，完整响应：${cleaned ? cleaned.slice(0, 500) : JSON.stringify(data).slice(0, 500)}`);
+  } {
     throw new Error(`AI 返回内容为空，完整响应：${JSON.stringify(data).slice(0, 500)}`);
   }
 
