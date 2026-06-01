@@ -332,10 +332,10 @@ export default function ReliabilityTestPage() {
   const loadRecords = async () => {
     setLoading(true);
     try {
-      const { data, error } = await reliabilityDb.from(TABLE).select('*').order('create_time', { ascending: false });
+      const { data, error } = await reliabilityDb.from(TABLE).select('*');
       if (error) throw error;
 
-      // 自动更新状态：所有取货时间已过 → status = '已完成'
+        // 自动更新状态：所有取货时间已过 → status = '已完成'
       const toUpdate: string[] = [];
       (data || []).forEach(r => {
         if (r.status === '已完成') return;
@@ -347,12 +347,12 @@ export default function ReliabilityTestPage() {
       if (toUpdate.length > 0) {
         const { error: updError } = await reliabilityDb
           .from(TABLE)
-          .update({ status: '已完成', update_time: new Date().toISOString() })
+          .update({ status: '已完成' })
           .in('id', toUpdate);
         if (updError) console.warn('自动更新状态失败:', updError.message);
         // 重新加载最新数据
         const { data: refreshed, error: refError } = await reliabilityDb
-          .from(TABLE).select('*').order('create_time', { ascending: false });
+          .from(TABLE).select('*');
         if (refError) throw refError;
         setRecords(refreshed || []);
       } else {
@@ -513,14 +513,11 @@ export default function ReliabilityTestPage() {
       };
 
       if (editingRecord) {
-        row.update_time = now;
         const { error } = await reliabilityDb.from(TABLE).update(row).eq('id', editingRecord.id);
         if (error) throw error;
         setRecords(prev => prev.map(r => r.id === editingRecord.id ? { ...r, ...row } as ReliabilityTestRecord : r));
         showToast('已更新', 'success');
       } else {
-        row.create_time = now;
-        row.update_time = now;
         const { data, error } = await reliabilityDb.from(TABLE).insert(row).select().single();
         if (error) throw error;
         setRecords(prev => [{ id: data.id, ...row } as ReliabilityTestRecord, ...prev]);
@@ -627,8 +624,6 @@ export default function ReliabilityTestPage() {
 
         if (!mapped.series) continue;
 
-        (mapped as Record<string, unknown>).create_time = now;
-        (mapped as Record<string, unknown>).update_time = now;
         (mapped as Record<string, unknown>).status ||= 'active';
         ((mapped as Record<string, unknown>).start_time as string) ||= now.split('T')[0];
 
