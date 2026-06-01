@@ -219,28 +219,35 @@ async function analyzeImageTencent(base64Image: string): Promise<AnalysisResult>
   }
 
   const data: any = await response.json();
-  // 腾讯云返回结构：data.Response.TableDetectInfos[0].Cells
+  console.log('【腾讯云 OCR 原始返回】', JSON.stringify(data, null, 2).slice(0, 3000));
+
   const resp = data.Response;
   if (!resp || resp.Error) {
     throw new Error(`腾讯云 OCR 识别失败：${resp?.Error?.Message || '未知错误'}`);
   }
 
   // 解析腾讯云返回的单元格数据
+  // RecognizeTableOCR 返回：Response.TableDetectInfos[0].Cells
+  // 每个 Cell 字段可能是 Row/Column 或 RowIndex/ColIndex
   const cells: any[] = resp.TableDetectInfos?.[0]?.Cells || [];
   if (!cells.length) {
     throw new Error('腾讯云 OCR 未识别到任何表格');
   }
 
-  // 根据单元格的 RowIndex/ColIndex 重建表格
-  const maxRow = Math.max(...cells.map(c => c.RowIndex ?? 0));
-  const maxCol = Math.max(...cells.map(c => c.ColIndex ?? 0));
+  // 判断字段名（腾讯云不同版本字段名可能不同）
+  const getRow = (c: any) => (typeof c.Row === 'number' ? c.Row : typeof c.RowIndex === 'number' ? c.RowIndex : 0);
+  const getCol = (c: any) => (typeof c.Column === 'number' ? c.Column : typeof c.ColIndex === 'number' ? c.ColIndex : 0);
+  const getText = (c: any) => c.Text ?? c.Word ?? '';
+
+  const maxRow = Math.max(...cells.map(getRow));
+  const maxCol = Math.max(...cells.map(getCol));
   const headers: string[] = [];
   const rows: string[][] = [];
 
   for (let r = 0; r <= maxRow; r++) {
-    const rowCells = cells.filter(c => (c.RowIndex ?? 0) === r).sort((a, b) => (a.ColIndex ?? 0) - (b.ColIndex ?? 0));
+    const rowCells = cells.filter(c => getRow(c) === r).sort((a, b) => getCol(a) - getCol(b));
     const rowData = new Array(maxCol + 1).fill('');
-    rowCells.forEach(c => { rowData[c.ColIndex ?? 0] = c.Text ?? ''; });
+    rowCells.forEach(c => { rowData[getCol(c)] = getText(c); });
     if (r === 0) {
       rowData.forEach((v, i) => { headers[i] = v || `列${i + 1}`; });
     } else {
@@ -296,7 +303,7 @@ export default function ImageToExcelPage() {
       setErrorMsg(e.message || '识别失败');
       setStep('error');
     }
-  }, []);
+  }, [ocrMode]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
