@@ -477,35 +477,6 @@ export default function StatsPage() {
     email: string | null;
   } | null>(null);
 
-  /* ── 监听登录状态变化 ── */
-  useEffect(() => {
-    // 初始加载
-    getIsolatedUser().then(u => {
-      console.log('[Auth] 初始隔离状态:', u);
-      setIsolatedUser(u);
-    }).catch(() => {});
-
-    // 监听登录/登出事件
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      console.log('[Auth] 事件:', event);
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        // 不依赖 session 参数（可能为 null），直接获取最新用户状态
-        getIsolatedUser().then(u => {
-          console.log('[Auth] 重新登录后隔离状态:', u);
-          setIsolatedUser(u);
-        }).catch(() => {});
-      }
-      if (event === 'SIGNED_OUT') {
-        console.log('[Auth] 登出');
-        setLocalSheets([]);
-        setSheetRecords([]);
-        setActiveSheetId(null);
-        setIsolatedUser({ isIsolated: false, userId: null, email: null });
-      }
-    });
-
-    return () => { subscription.unsubscribe(); };
-  }, []);
 
   /* ── Sheet 列表（本地缓存）── */
   const [localSheets, setLocalSheets] = useState<LocalSheet[]>([]);
@@ -774,17 +745,21 @@ export default function StatsPage() {
           .order('created_at', { ascending: true });
 
         if (isoUser.isIsolated) {
+          console.log('[Auth] init() 查询 sheets，user_id:', isoUser.userId);
           sheetsQuery = sheetsQuery.eq('user_id', isoUser.userId);
         } else {
+          console.log('[Auth] init() 查询 sheets，user_id IS NULL');
           sheetsQuery = sheetsQuery.is('user_id', null);
         }
 
         const { data: cloudSheets, error } = await sheetsQuery;
+        console.log('[Auth] init() sheets 查询结果:', { count: cloudSheets?.length, error });
 
         if (ignore) return;
         if (error) throw error;
 
         if (!cloudSheets || cloudSheets.length === 0) {
+          console.log('[Auth] init() 无 sheets，准备创建默认 sheet');
           // 首次使用，创建默认 Sheet
           const insertData: Record<string, unknown> = { name: '工作表1', 'order': [] };
           if (isoUser.isIsolated && isoUser.userId) {
@@ -811,7 +786,9 @@ export default function StatsPage() {
           }));
           setLocalSheets(mapped);
           setActiveSheetId(mapped[0].id);
+          console.log('[Auth] init() 准备调用 loadRecords, sheetId:', mapped[0].id);
           await loadRecords(mapped[0].id);
+          console.log('[Auth] init() loadRecords 完成');
         }
       } catch (err) {
         console.error('[Auth] init() 失败:', err);
@@ -846,10 +823,14 @@ export default function StatsPage() {
   /* ── 加载某个 Sheet 的所有记录 ── */
   const loadRecords = async (sheetId: string, retryCount = 0) => {
     try {
+      console.log('[loadRecords] 开始加载 sheetId:', sheetId);
       setLoading(true);
 
       // 获取最新隔离状态（不依赖可能过期的 state）
       const isoUser = await getIsolatedUser();
+      console.log('[loadRecords] 隔离状态:', isoUser);
+
+      console.log('[loadRecords] 查询参数: sheetId=', sheetId, 'isoUser=', isoUser?.isIsolated, 'userId=', isoUser?.userId);
 
       let recordsQuery = supabase
         .from('records')
@@ -860,11 +841,14 @@ export default function StatsPage() {
       // 根据隔离状态过滤
       if (isoUser?.isIsolated && isoUser?.userId) {
         recordsQuery = recordsQuery.eq('user_id', isoUser.userId);
+        console.log('[loadRecords] 加过滤: user_id =', isoUser.userId);
       } else {
         recordsQuery = recordsQuery.is('user_id', null);
+        console.log('[loadRecords] 加过滤: user_id IS NULL');
       }
 
       const { data, error } = await recordsQuery;
+      console.log('[loadRecords] 查询结果:', { count: data?.length, error, firstId: data?.[0]?.id });
 
       if (error) {
         throw error;
@@ -1118,31 +1102,19 @@ export default function StatsPage() {
           let localSheet = localSheets.find((s) => s.name === sheetName);
 
           if (!localSheet) {
-            // 先检查数据库中是否已存在同名 sheet（其他用户创建的）
-            const { data: existingSheet } = await supabase
+            // 创建新 sheet（用自己的 user_id，不复用别人的）
+            const { data: newSheet } = await supabase
               .from('sheets')
+              .insert({
+                name: sheetName,
+                'order': [],
+                user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
+              })
               .select('id, name')
-              .eq('name', sheetName)
-              .maybeSingle();
-
-            if (existingSheet) {
-              // 复用已存在的 sheet
-              localSheet = { id: existingSheet.id, name: existingSheet.name };
-              // 如果本地没有，添加到本地状态
-              if (!localSheets.find((s) => s.id === localSheet!.id)) {
-                setLocalSheets((prev) => [...prev, localSheet!]);
-              }
-            } else {
-              // 创建新 sheet
-              const { data: newSheet } = await supabase
-                .from('sheets')
-                .insert({ name: sheetName, 'order': [], user_id: isoUser?.isIsolated ? isoUser.userId ?? user.id : null })
-                .select('id, name')
-                .single();
-              if (!newSheet) continue;
-              localSheet = { id: newSheet.id, name: newSheet.name };
-              setLocalSheets((prev) => [...prev, localSheet!]);
-            }
+              .single();
+            if (!newSheet) continue;
+            localSheet = { id: newSheet.id, name: newSheet.name };
+            setLocalSheets((prev) => [...prev, localSheet!]);
           } else {
             // 本地已存在，检查数据库是否也有（可能其他用户创建了同名 sheet）
             const { data: existingSheet } = await supabase
@@ -1198,12 +1170,14 @@ export default function StatsPage() {
             user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
           }));
 
+          console.log('[import] 准备插入', validRecords.length, '条记录，user_id:', (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null);
           const { error: insertError } = await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
           if (insertError) {
-            console.error('插入失败:', insertError);
+            console.error('[import] 插入失败:', insertError);
             alert(`导入失败: ${insertError.message}`);
             continue;
           }
+          console.log('[import] 插入成功，已写入', validRecords.length, '条');
           totalCount += validRecords.length;
 
           // 如果当前在导入的 sheet 上，更新记录

@@ -1075,31 +1075,19 @@ export default function BoltStatsPage() {
           let localSheet = localSheets.find((s) => s.name === sheetName);
 
           if (!localSheet) {
-            // 先检查数据库中是否已存在同名 sheet（其他用户创建的）
-            const { data: existingSheet } = await supabase
+            // 创建新 sheet（用自己的 user_id，不复用别人的）
+            const { data: newSheet } = await supabase
               .from('bolt_sheets')
+              .insert({
+                name: sheetName,
+                'order': [],
+                user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
+              })
               .select('id, name')
-              .eq('name', sheetName)
-              .maybeSingle();
-
-            if (existingSheet) {
-              // 复用已存在的 sheet
-              localSheet = { id: existingSheet.id, name: existingSheet.name };
-              // 如果本地没有，添加到本地状态
-              if (!localSheets.find((s) => s.id === localSheet!.id)) {
-                setLocalSheets((prev) => [...prev, localSheet!]);
-              }
-            } else {
-              // 创建新 sheet
-              const { data: newSheet } = await supabase
-                .from('bolt_sheets')
-                .insert({ name: sheetName, 'order': [], user_id: isoUser?.isIsolated ? isoUser.userId ?? user.id : null })
-                .select('id, name')
-                .single();
-              if (!newSheet) continue;
-              localSheet = { id: newSheet.id, name: newSheet.name };
-              setLocalSheets((prev) => [...prev, localSheet!]);
-            }
+              .single();
+            if (!newSheet) continue;
+            localSheet = { id: newSheet.id, name: newSheet.name };
+            setLocalSheets((prev) => [...prev, localSheet!]);
           } else {
             // 本地已存在，检查数据库是否也有（可能其他用户创建了同名 sheet）
             const { data: existingSheet } = await supabase
