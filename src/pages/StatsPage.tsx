@@ -470,12 +470,6 @@ function FilterDropdown({
 export default function StatsPage() {
   const navigate = useNavigate();
 
-  /* ─── 独立账号隔离状态 ─── */
-  const [isolatedUser, setIsolatedUser] = useState<{
-    isIsolated: boolean;
-    userId: string | null;
-    email: string | null;
-  } | null>(null);
 
 
   /* ── Sheet 列表（本地缓存）── */
