@@ -727,15 +727,12 @@ export default function StatsPage() {
     let ignore = false;
 
     async function init() {
-      console.log('[Auth] init() 开始执行');
       // 直接获取最新用户状态，不依赖 state
       const isoUser = await getIsolatedUser();
       if (!isoUser.userId || ignore) {
-        console.log('[Auth] init() 结束：无用户', isoUser);
         setLoading(false);
         return;
       }
-      console.log('[Auth] init() 隔离状态:', isoUser);
 
       try {
         // 根据隔离状态过滤 sheets
@@ -745,21 +742,17 @@ export default function StatsPage() {
           .order('created_at', { ascending: true });
 
         if (isoUser.isIsolated) {
-          console.log('[Auth] init() 查询 sheets，user_id:', isoUser.userId);
           sheetsQuery = sheetsQuery.eq('user_id', isoUser.userId);
         } else {
-          console.log('[Auth] init() 查询 sheets，user_id IS NULL');
           sheetsQuery = sheetsQuery.is('user_id', null);
         }
 
         const { data: cloudSheets, error } = await sheetsQuery;
-        console.log('[Auth] init() sheets 查询结果:', { count: cloudSheets?.length, error });
 
         if (ignore) return;
         if (error) throw error;
 
         if (!cloudSheets || cloudSheets.length === 0) {
-          console.log('[Auth] init() 无 sheets，准备创建默认 sheet');
           // 首次使用，创建默认 Sheet
           const insertData: Record<string, unknown> = { name: '工作表1', 'order': [] };
           if (isoUser.isIsolated && isoUser.userId) {
@@ -786,12 +779,10 @@ export default function StatsPage() {
           }));
           setLocalSheets(mapped);
           setActiveSheetId(mapped[0].id);
-          console.log('[Auth] init() 准备调用 loadRecords, sheetId:', mapped[0].id);
           await loadRecords(mapped[0].id);
-          console.log('[Auth] init() loadRecords 完成');
         }
       } catch (err) {
-        console.error('[Auth] init() 失败:', err);
+        console.error('初始化失败:', err);
         setLoading(false);
         showToast('加载数据失败，请检查网络连接');
       }
@@ -805,13 +796,10 @@ export default function StatsPage() {
   // 监听登录状态变化，触发重新加载
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      console.log('[Auth] 事件:', event);
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        console.log('[Auth] 触发重新加载');
         initRef.current?.();
       }
       if (event === 'SIGNED_OUT') {
-        console.log('[Auth] 登出');
         setLocalSheets([]);
         setSheetRecords([]);
         setActiveSheetId(null);
@@ -823,14 +811,11 @@ export default function StatsPage() {
   /* ── 加载某个 Sheet 的所有记录 ── */
   const loadRecords = async (sheetId: string, retryCount = 0) => {
     try {
-      console.log('[loadRecords] 开始加载 sheetId:', sheetId);
       setLoading(true);
 
       // 获取最新隔离状态（不依赖可能过期的 state）
       const isoUser = await getIsolatedUser();
-      console.log('[loadRecords] 隔离状态:', isoUser);
 
-      console.log('[loadRecords] 查询参数: sheetId=', sheetId, 'isoUser=', isoUser?.isIsolated, 'userId=', isoUser?.userId);
 
       let recordsQuery = supabase
         .from('records')
@@ -841,14 +826,11 @@ export default function StatsPage() {
       // 根据隔离状态过滤
       if (isoUser?.isIsolated && isoUser?.userId) {
         recordsQuery = recordsQuery.eq('user_id', isoUser.userId);
-        console.log('[loadRecords] 加过滤: user_id =', isoUser.userId);
       } else {
         recordsQuery = recordsQuery.is('user_id', null);
-        console.log('[loadRecords] 加过滤: user_id IS NULL');
       }
 
       const { data, error } = await recordsQuery;
-      console.log('[loadRecords] 查询结果:', { count: data?.length, error, firstId: data?.[0]?.id });
 
       if (error) {
         throw error;
@@ -1170,14 +1152,11 @@ export default function StatsPage() {
             user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
           }));
 
-          console.log('[import] 准备插入', validRecords.length, '条记录，user_id:', (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null);
           const { error: insertError } = await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
           if (insertError) {
-            console.error('[import] 插入失败:', insertError);
             alert(`导入失败: ${insertError.message}`);
             continue;
           }
-          console.log('[import] 插入成功，已写入', validRecords.length, '条');
           totalCount += validRecords.length;
 
           // 如果当前在导入的 sheet 上，更新记录
