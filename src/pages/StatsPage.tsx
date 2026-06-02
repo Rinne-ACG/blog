@@ -486,15 +486,14 @@ export default function StatsPage() {
     }).catch(() => {});
 
     // 监听登录/登出事件
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       console.log('[Auth] 事件:', event);
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // 直接用 session.user，避免二次调用 getUser()
-        const u = session?.user
-          ? { isIsolated: session.user.email === 'test@qq.com', userId: session.user.id, email: session.user.email ?? null }
-          : { isIsolated: false, userId: null, email: null };
-        console.log('[Auth] 重新登录后隔离状态:', u);
-        setIsolatedUser(u);
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        // 不依赖 session 参数（可能为 null），直接获取最新用户状态
+        getIsolatedUser().then(u => {
+          console.log('[Auth] 重新登录后隔离状态:', u);
+          setIsolatedUser(u);
+        }).catch(() => {});
       }
       if (event === 'SIGNED_OUT') {
         console.log('[Auth] 登出');
