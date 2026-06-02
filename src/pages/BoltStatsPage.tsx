@@ -734,9 +734,11 @@ export default function BoltStatsPage() {
       } catch (e) { user = null; }
       if (!user || ignore) return;
       try {
+        // 获取隔离状态（不依赖可能还没加载好的 state）
+        const isoUser = await getIsolatedUser();
 
         let query = supabase.from('bolt_sheets').select('id, name, "order"');
-        query = applyUserFilter(query, !!isolatedUser?.isIsolated, isolatedUser?.userId ?? null);
+        query = applyUserFilter(query, !!isoUser?.isIsolated, isoUser?.userId ?? null);
         const { data: cloudSheets, error } = await query.order('created_at', { ascending: true });
 
         if (ignore) return;
@@ -746,7 +748,7 @@ export default function BoltStatsPage() {
           // 首次使用，创建默认 Sheet
           const { data: newSheet, error: insertError } = await supabase
             .from('bolt_sheets')
-            .insert({ name: '工作表1', 'order': [], user_id: isolatedUser?.isIsolated ? isolatedUser?.userId || user.id : null })
+            .insert({ name: '工作表1', 'order': [], user_id: isoUser?.isIsolated ? isoUser?.userId || user.id : null })
             .select('id, name, "order"')
             .single();
           if (ignore) return;
@@ -782,6 +784,8 @@ export default function BoltStatsPage() {
   const loadRecords = async (sheetId: string, retryCount = 0) => {
     try {
       setLoading(true);
+      // 获取最新隔离状态（不依赖可能过期的 state）
+      const isoUser = await getIsolatedUser();
       let query = supabase
         .from('bolt_records')
         .select('*')
@@ -789,8 +793,8 @@ export default function BoltStatsPage() {
         .order('entry_date', { ascending: false });
 
       // 根据隔离状态过滤
-      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
-        query = query.eq('user_id', isolatedUser.userId);
+      if (isoUser.isIsolated && isoUser.userId) {
+        query = query.eq('user_id', isoUser.userId);
       } else {
         query = query.is('user_id', null);
       }
@@ -861,13 +865,14 @@ export default function BoltStatsPage() {
   const addSheet = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const isoUser = await getIsolatedUser();
     let n = localSheets.length + 1;
     let name = `工作表${n}`;
     while (localSheets.find((s) => s.name === name)) { n++; name = `工作表${n}`; }
 
     const { data: newSheet } = await supabase
       .from('bolt_sheets')
-      .insert({ name, 'order': [], user_id: isolatedUser?.isIsolated ? user.id : null })
+      .insert({ name, 'order': [], user_id: isoUser?.isIsolated ? user.id : null })
       .select('id, name')
       .single();
 
@@ -1017,6 +1022,9 @@ export default function BoltStatsPage() {
         } catch (e) { user = null; }
         if (!user) { showToast('请先登录'); return; }
 
+        // 获取隔离状态（不依赖可能还没加载好的 state）
+        const isoUser = await getIsolatedUser();
+
         let totalCount = 0;
 
         for (let sheetIdx = 0; sheetIdx < wb.SheetNames.length; sheetIdx++) {
@@ -1056,7 +1064,7 @@ export default function BoltStatsPage() {
               // 创建新 sheet
               const { data: newSheet } = await supabase
                 .from('bolt_sheets')
-                .insert({ name: sheetName, 'order': [], user_id: isolatedUser?.isIsolated ? user.id : null })
+                .insert({ name: sheetName, 'order': [], user_id: isoUser?.isIsolated ? user.id : null })
                 .select('id, name')
                 .single();
               if (!newSheet) continue;
@@ -1114,6 +1122,7 @@ export default function BoltStatsPage() {
             notes: r.notes,
             rework_order_no: r.reworkOrderNo,
             comments: r.comments || null,
+            user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
           }));
 
           await supabase.from('bolt_records').insert(cloudRecords as Record<string, unknown>[]);
