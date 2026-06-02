@@ -751,29 +751,29 @@ export default function StatsPage() {
   const avgYield    = calcRate(totalGood, totalActual);
 
   /* ── 初始加载：获取当前用户 + 加载 Sheets ── */
+  const initRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     let ignore = false;
 
     async function init() {
-      // 获取用户（容错处理锁竞争）
-      let user;
-      try {
-        const res = await supabase.auth.getUser();
-        user = res.error ? null : res.data.user;
-      } catch (e) { user = null; }
-      if (!user || ignore) return;
+      console.log('[Auth] init() 开始执行');
+      // 直接获取最新用户状态，不依赖 state
+      const isoUser = await getIsolatedUser();
+      if (!isoUser.userId || ignore) {
+        console.log('[Auth] init() 结束：无用户', isoUser);
+        setLoading(false);
+        return;
+      }
+      console.log('[Auth] init() 隔离状态:', isoUser);
 
       try {
-        // 传入 user 对象，避免重复调用 getUser()
-        const isoUser = await getIsolatedUser(user);
-
         // 根据隔离状态过滤 sheets
         let sheetsQuery = supabase
           .from('sheets')
           .select('id, name, "order"')
           .order('created_at', { ascending: true });
 
-        if (isoUser?.isIsolated) {
+        if (isoUser.isIsolated) {
           sheetsQuery = sheetsQuery.eq('user_id', isoUser.userId);
         } else {
           sheetsQuery = sheetsQuery.is('user_id', null);
@@ -787,7 +787,7 @@ export default function StatsPage() {
         if (!cloudSheets || cloudSheets.length === 0) {
           // 首次使用，创建默认 Sheet
           const insertData: Record<string, unknown> = { name: '工作表1', 'order': [] };
-          if (isoUser?.isIsolated && isoUser.userId) {
+          if (isoUser.isIsolated && isoUser.userId) {
             insertData.user_id = isoUser.userId;
           }
 
@@ -802,7 +802,7 @@ export default function StatsPage() {
             setLocalSheets([{ id: newSheet.id, name: newSheet.name }]);
             setActiveSheetId(newSheet.id);
             setSheetRecords([]);
-            setLoading(false); // 没有记录需要加载，直接关闭 loading
+            setLoading(false);
           }
         } else {
           const mapped: LocalSheet[] = cloudSheets.map((s) => ({
@@ -811,19 +811,37 @@ export default function StatsPage() {
           }));
           setLocalSheets(mapped);
           setActiveSheetId(mapped[0].id);
-          // loadRecords 内部会处理 loading 状态
           await loadRecords(mapped[0].id);
         }
       } catch (err) {
-        console.error('初始化失败:', err);
+        console.error('[Auth] init() 失败:', err);
         setLoading(false);
         showToast('加载数据失败，请检查网络连接');
       }
     }
 
+    initRef.current = init;
     init();
     return () => { ignore = true; };
-  }, [isolatedUser]);
+  }, []);
+
+  // 监听登录状态变化，触发重新加载
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      console.log('[Auth] 事件:', event);
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        console.log('[Auth] 触发重新加载');
+        initRef.current?.();
+      }
+      if (event === 'SIGNED_OUT') {
+        console.log('[Auth] 登出');
+        setLocalSheets([]);
+        setSheetRecords([]);
+        setActiveSheetId(null);
+      }
+    });
+    return () => { subscription.unsubscribe(); };
+  }, []);
 
   /* ── 加载某个 Sheet 的所有记录 ── */
   const loadRecords = async (sheetId: string, retryCount = 0) => {
