@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { supabase, getIsolatedUser, applyUserFilter, withUserId } from '../lib/supabase';
+import { supabase, getIsolatedUser, applyUserFilter } from '../lib/supabase';
 import type { ProductionRecord } from '../types';
 
 
@@ -736,7 +736,7 @@ export default function BoltStatsPage() {
       try {
 
         let query = supabase.from('bolt_sheets').select('id, name, "order"');
-        query = applyUserFilter(query, isolatedUser?.isIsolated, isolatedUser?.userId);
+        query = applyUserFilter(query, !!isolatedUser?.isIsolated, isolatedUser?.userId ?? null);
         const { data: cloudSheets, error } = await query.order('created_at', { ascending: true });
 
         if (ignore) return;

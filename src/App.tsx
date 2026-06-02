@@ -109,7 +109,7 @@ export default function App() {
         {/* Footer */}
         <footer className="border-t border-gray-200 bg-white">
           <div className="max-w-4xl mx-auto px-4 py-6 text-center text-sm text-gray-400">
-            <p>© 2026 博客主题 · Built with React + TypeScript + Vite</p>
+            <p>© 2026 安兴牛角数据统计 · Built with React + TypeScript + Vite</p>
           </div>
         </footer>
       </div>

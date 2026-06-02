@@ -34,6 +34,9 @@ export interface DefectAnalysisRecord {
   // 分析
   defectCause: string;       // 不良原因分析
   notes: string;             // 备注
+
+  // 账号隔离
+  user_id?: string;
 }
 
 // 生产良率记录（牛角车间）
@@ -83,6 +86,9 @@ export interface ProductionRecord {
 
   // 批注（格式：{ "fieldName": "批注内容" }）
   comments?: Record<string, string>;
+
+  // 账号隔离
+  user_id?: string;
 }
 
 // 可靠性实验记录（另一个 Supabase 项目 - records 表）

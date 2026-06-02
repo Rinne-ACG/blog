@@ -245,12 +245,11 @@ async function analyzeImageWithAI(base64Image: string, mimeType: string): Promis
 
   if (!cleaned) {
     throw new Error(`AI 返回内容无法解析为 JSON，完整响应：${cleaned ? cleaned.slice(0, 500) : JSON.stringify(data).slice(0, 500)}`);
-  } {
+  } else {
     throw new Error(`AI 返回内容为空，完整响应：${JSON.stringify(data).slice(0, 500)}`);
   }
 
   // 清洗 markdown 代码块包裹
-  let cleaned = content;
   cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '');
   cleaned = cleaned.replace(/\n?\s*```\s*$/, '');
   cleaned = cleaned.trim();

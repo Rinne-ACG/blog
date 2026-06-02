@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { supabase, getIsolatedUser, applyUserFilter, withUserId } from '../lib/supabase';
+import { supabase, getIsolatedUser, applyUserFilter } from '../lib/supabase';
 import { albums } from './GalleryPage';
 import type { DefectAnalysisRecord } from '../types';
 
@@ -224,7 +224,7 @@ export default function DefectAnalysisPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { navigate('/login', { replace: true }); return; }
       let query = supabase.from('defect_sheets').select('id, name, order');
-      query = applyUserFilter(query, isolatedUser?.isIsolated, isolatedUser?.userId);
+      query = applyUserFilter(query, !!isolatedUser?.isIsolated, isolatedUser?.userId ?? null);
       const { data, error } = await query.order('order', { ascending: true });
       if (error) { showToast('加载工作表失败', 'error'); setSheetLoading(false); return; }
       const list: LocalSheet[] = (data || []).map((s: { id: string; name: string }) => ({
@@ -243,7 +243,7 @@ export default function DefectAnalysisPage() {
     const load = async () => {
       setRecordLoading(true);
       let query = supabase.from('defect_records').select('*').eq('sheet_id', activeSheetId);
-      query = applyUserFilter(query, isolatedUser?.isIsolated, isolatedUser?.userId);
+      query = applyUserFilter(query, !!isolatedUser?.isIsolated, isolatedUser?.userId ?? null);
       const { data, error } = await query.order('entry_date', { ascending: true });
       if (error) { showToast('加载记录失败', 'error'); setRecordLoading(false); return; }
       const records: DefectAnalysisRecord[] = (data || []).map((r: Record<string, unknown>) => ({

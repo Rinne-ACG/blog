@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { supabase, getIsolatedUser, applyUserFilter, withUserId } from '../lib/supabase';
+import { supabase, getIsolatedUser } from '../lib/supabase';
 import type { ProductionRecord } from '../types';
 
 

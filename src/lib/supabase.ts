@@ -32,7 +32,7 @@ export const getIsolatedUser = async (): Promise<{
   const user = data.user;
   if (!user) return { isIsolated: false, userId: null, email: null };
   const isIsolated = user.email === 'test@qq.com';
-  return { isIsolated, userId: user.id, email: user.email };
+  return { isIsolated, userId: user.id ?? null, email: user.email ?? null };
 };
 
 /**

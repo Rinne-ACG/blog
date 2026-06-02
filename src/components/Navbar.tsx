@@ -41,9 +41,6 @@ export default function Navbar() {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow">
             B
           </div>
-          <span className="font-bold text-gray-900 text-lg group-hover:text-indigo-600 transition-colors">
-            博客主题
-          </span>
         </Link>
 
         {/* Desktop nav */}
