@@ -158,7 +158,7 @@ export default function DefectAnalysisPage() {
     getIsolatedUser().then(setIsolatedUser).catch(() => {});
   }, []);
 
-  const navigate = useNavigate();
+    const navigate = useNavigate();
 
   /* ─── 工作表 ─── */
   const [sheets, setSheets] = useState<LocalSheet[]>([]);
@@ -223,19 +223,9 @@ export default function DefectAnalysisPage() {
       setSheetLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { navigate('/login', { replace: true }); return; }
-      let query = supabase
-        .from('defect_sheets')
-        .select('id, name, order')
-        .order('order', { ascending: true });
-
-      // 根据隔离状态过滤
-      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
-        query = query.eq('user_id', isolatedUser.userId);
-      } else {
-        query = query.is('user_id', null);
-      }
-
-      const { data, error } = await query;
+      let query = supabase.from('defect_sheets').select('id, name, order');
+      query = applyUserFilter(query, isolatedUser?.isIsolated, isolatedUser?.userId);
+      const { data, error } = await query.order('order', { ascending: true });
       if (error) { showToast('加载工作表失败', 'error'); setSheetLoading(false); return; }
       const list: LocalSheet[] = (data || []).map((s: { id: string; name: string }) => ({
         id: s.id, name: s.name,
@@ -252,20 +242,9 @@ export default function DefectAnalysisPage() {
     if (!activeSheetId) { setSheetRecords([]); return; }
     const load = async () => {
       setRecordLoading(true);
-      let query = supabase
-        .from('defect_records')
-        .select('*')
-        .eq('sheet_id', activeSheetId)
-        .order('entry_date', { ascending: true });
-
-      // 根据隔离状态过滤
-      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
-        query = query.eq('user_id', isolatedUser.userId);
-      } else {
-        query = query.is('user_id', null);
-      }
-
-      const { data, error } = await query;
+      let query = supabase.from('defect_records').select('*').eq('sheet_id', activeSheetId);
+      query = applyUserFilter(query, isolatedUser?.isIsolated, isolatedUser?.userId);
+      const { data, error } = await query.order('entry_date', { ascending: true });
       if (error) { showToast('加载记录失败', 'error'); setRecordLoading(false); return; }
       const records: DefectAnalysisRecord[] = (data || []).map((r: Record<string, unknown>) => ({
         id: str(r.id),
@@ -359,10 +338,8 @@ export default function DefectAnalysisPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const id = generateUUID();
-    // 根据隔离状态设置 user_id
-    const userId = isolatedUser?.isIsolated ? user.id : null;
     const { error } = await supabase.from('defect_sheets').insert({
-      id, name, user_id: userId, order: sheets.length,
+      id, name, user_id: isolatedUser?.isIsolated ? user.id : null, order: sheets.length,
     });
     if (error) { showToast('创建失败', 'error'); return; }
     const ns: LocalSheet = { id, name };
@@ -605,11 +582,8 @@ export default function DefectAnalysisPage() {
 
     if (imported.length === 0) { showToast('未识别到有效数据', 'error'); return; }
 
-    // 独立账号：填入 user_id
-    const isIsolated = isolatedUser?.isIsolated && isolatedUser?.userId;
     // 批量写入（entry_date 为空时传 null）
-    const dbRows = imported.map(r => ({
-      ...(isIsolated ? { user_id: isolatedUser.userId } : {}),
+    let dbRows = imported.map(r => ({
       id: r.id, sheet_id: activeSheetId,
       entry_date: r.entryDate ? parseDate(r.entryDate) || null : null,
       seq: r.seq,
@@ -621,6 +595,10 @@ export default function DefectAnalysisPage() {
       defect_recharge_defect: r.defectRechargeDefect,
       defect_cause: r.defectCause, notes: r.notes,
     }));
+    // 独立账号：填入 user_id
+    if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+      dbRows = dbRows.map(row => ({ ...row, user_id: isolatedUser.userId }));
+    }
     const { error } = await supabase.from('defect_records').insert(dbRows);
     if (error) { showToast('导入失败：' + error.message, 'error'); return; }
     setSheetRecords(prev => [...prev, ...imported]);
