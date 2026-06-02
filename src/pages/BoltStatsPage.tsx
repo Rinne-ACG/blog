@@ -975,12 +975,8 @@ export default function BoltStatsPage() {
       operator: final.operator,
       notes: final.notes,
       rework_order_no: final.reworkOrderNo,
+      user_id: (isolatedUser?.isIsolated && isolatedUser?.userId) ? isolatedUser.userId : null,
     };
-
-    // 独立账号：填入 user_id
-    if (isolatedUser?.isIsolated && isolatedUser?.userId) {
-      recordCloudData.user_id = isolatedUser.userId;
-    }
 
     if (editingId) {
       // 编辑

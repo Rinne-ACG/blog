@@ -477,13 +477,10 @@ export default function DefectAnalysisPage() {
       defect_recharge_defect: row.defectRechargeDefect,
       defect_cause: row.defectCause,
       notes: row.notes,
+      user_id: (isolatedUser?.isIsolated && isolatedUser?.userId) ? isolatedUser.userId : null,
     };
 
     if (editingRecord) {
-      // 独立账号：填入 user_id
-      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
-        dbRow.user_id = isolatedUser.userId;
-      }
       const { error } = await supabase.from('defect_records').update(dbRow).eq('id', row.id);
       if (error) { showToast('保存失败', 'error'); return; }
       setSheetRecords(prev => prev.map(r => r.id === row.id ? row : r));
@@ -491,10 +488,6 @@ export default function DefectAnalysisPage() {
       await uploadNewImages();
       showToast('已更新');
     } else {
-      // 独立账号：填入 user_id
-      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
-        dbRow.user_id = isolatedUser.userId;
-      }
       const { error } = await supabase.from('defect_records').insert(dbRow);
       if (error) { showToast('新增失败', 'error'); return; }
       setSheetRecords(prev => [...prev, row]);
