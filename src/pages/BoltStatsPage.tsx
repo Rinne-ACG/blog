@@ -464,18 +464,6 @@ function FilterDropdown({
   );
 }
 
-// ═══════════════════════════════════════
-//   独立账号隔离状态
-//   ═══════════════════════════════════════
-const [isolatedUser, setIsolatedUser] = useState<{
-  isIsolated: boolean;
-  userId: string | null;
-  email: string | null;
-} | null>(null);
-
-effect(() => {
-  getIsolatedUser().then(setIsolatedUser).catch(() => {});
-}, []);
 
 export default function BoltStatsPage() {
   /* ─── 独立账号隔离状态 ─── */
@@ -745,12 +733,11 @@ export default function BoltStatsPage() {
         user = res.error ? null : res.data.user;
       } catch (e) { user = null; }
       if (!user || ignore) return;
-
       try {
-        const { data: cloudSheets, error } = await supabase
-          .from('bolt_sheets')
-          .select('id, name, "order"')
-          .order('created_at', { ascending: true });
+
+        let query = supabase.from('bolt_sheets').select('id, name, "order"');
+        query = applyUserFilter(query, isolatedUser?.isIsolated, isolatedUser?.userId);
+        const { data: cloudSheets, error } = await query.order('created_at', { ascending: true });
 
         if (ignore) return;
         if (error) throw error;
@@ -759,7 +746,7 @@ export default function BoltStatsPage() {
           // 首次使用，创建默认 Sheet
           const { data: newSheet, error: insertError } = await supabase
             .from('bolt_sheets')
-            .insert({ name: '工作表1', 'order': [], user_id: user.id })
+            .insert({ name: '工作表1', 'order': [], user_id: isolatedUser?.isIsolated ? isolatedUser?.userId || user.id : null })
             .select('id, name, "order"')
             .single();
           if (ignore) return;
@@ -789,7 +776,7 @@ export default function BoltStatsPage() {
 
     init();
     return () => { ignore = true; };
-  }, []);
+  }, [isolatedUser]);
 
   /* ── 加载某个 Sheet 的所有记录 ── */
   const loadRecords = async (sheetId: string, retryCount = 0) => {

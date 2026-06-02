@@ -794,7 +794,7 @@ export default function StatsPage() {
 
     init();
     return () => { ignore = true; };
-  }, []);
+  }, [isolatedUser]);
 
   /* ── 加载某个 Sheet 的所有记录 ── */
   const loadRecords = async (sheetId: string, retryCount = 0) => {
