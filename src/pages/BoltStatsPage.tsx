@@ -793,9 +793,12 @@ export default function BoltStatsPage() {
         .order('entry_date', { ascending: false });
 
       // 根据隔离状态过滤
+      console.log('[loadRecords] isoUser:', isoUser, 'sheetId:', sheetId);
       if (isoUser.isIsolated && isoUser.userId) {
+        console.log('[loadRecords] 过滤条件: user_id =', isoUser.userId);
         query = query.eq('user_id', isoUser.userId);
       } else {
+        console.log('[loadRecords] 过滤条件: user_id IS NULL');
         query = query.is('user_id', null);
       }
 
@@ -1064,7 +1067,7 @@ export default function BoltStatsPage() {
               // 创建新 sheet
               const { data: newSheet } = await supabase
                 .from('bolt_sheets')
-                .insert({ name: sheetName, 'order': [], user_id: isoUser?.isIsolated ? user.id : null })
+                .insert({ name: sheetName, 'order': [], user_id: isoUser?.isIsolated ? isoUser.userId ?? user.id : null })
                 .select('id, name')
                 .single();
               if (!newSheet) continue;
@@ -1125,7 +1128,12 @@ export default function BoltStatsPage() {
             user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
           }));
 
-          await supabase.from('bolt_records').insert(cloudRecords as Record<string, unknown>[]);
+          const { error: insertError } = await supabase.from('bolt_records').insert(cloudRecords as Record<string, unknown>[]);
+          if (insertError) {
+            console.error('插入失败:', insertError);
+            alert(`导入失败: ${insertError.message}`);
+            continue;
+          }
           totalCount += validRecords.length;
 
           // 如果当前在导入的 sheet 上，更新记录

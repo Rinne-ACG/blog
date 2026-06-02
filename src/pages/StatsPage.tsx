@@ -738,14 +738,17 @@ export default function StatsPage() {
       if (!user || ignore) return;
 
       try {
+        // 获取隔离状态（不依赖可能还没加载好的 state）
+        const isoUser = await getIsolatedUser();
+
         // 根据隔离状态过滤 sheets
         let sheetsQuery = supabase
           .from('sheets')
           .select('id, name, "order"')
           .order('created_at', { ascending: true });
 
-        if (isolatedUser?.isIsolated) {
-          sheetsQuery = sheetsQuery.eq('user_id', isolatedUser.userId);
+        if (isoUser?.isIsolated) {
+          sheetsQuery = sheetsQuery.eq('user_id', isoUser.userId);
         } else {
           sheetsQuery = sheetsQuery.is('user_id', null);
         }
@@ -758,8 +761,8 @@ export default function StatsPage() {
         if (!cloudSheets || cloudSheets.length === 0) {
           // 首次使用，创建默认 Sheet
           const insertData: Record<string, unknown> = { name: '工作表1', 'order': [] };
-          if (isolatedUser?.isIsolated && isolatedUser.userId) {
-            insertData.user_id = isolatedUser.userId;
+          if (isoUser?.isIsolated && isoUser.userId) {
+            insertData.user_id = isoUser.userId;
           }
 
           const { data: newSheet, error: insertError } = await supabase
@@ -801,6 +804,9 @@ export default function StatsPage() {
     try {
       setLoading(true);
 
+      // 获取最新隔离状态（不依赖可能过期的 state）
+      const isoUser = await getIsolatedUser();
+
       let recordsQuery = supabase
         .from('records')
         .select('*')
@@ -808,8 +814,8 @@ export default function StatsPage() {
         .order('entry_date', { ascending: false });
 
       // 根据隔离状态过滤
-      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
-        recordsQuery = recordsQuery.eq('user_id', isolatedUser.userId);
+      if (isoUser?.isIsolated && isoUser?.userId) {
+        recordsQuery = recordsQuery.eq('user_id', isoUser.userId);
       } else {
         recordsQuery = recordsQuery.is('user_id', null);
       }
@@ -879,14 +885,14 @@ export default function StatsPage() {
 
   /* ── 新建 Sheet ── */
   const addSheet = async () => {
-    if (!isolatedUser) return;
+    const isoUser = await getIsolatedUser();
     let n = localSheets.length + 1;
     let name = `工作表${n}`;
     while (localSheets.find((s) => s.name === name)) { n++; name = `工作表${n}`; }
 
     const insertData: Record<string, unknown> = { name, 'order': [] };
-    if (isolatedUser.isIsolated && isolatedUser.userId) {
-      insertData.user_id = isolatedUser.userId;
+    if (isoUser.isIsolated && isoUser.userId) {
+      insertData.user_id = isoUser.userId;
     }
 
     const { data: newSheet } = await supabase
@@ -972,6 +978,7 @@ export default function StatsPage() {
       ...derived,
     };
 
+    const isoUser = await getIsolatedUser();
     const recordCloudData: Record<string, unknown> = {
       sheet_id: activeSheetId,
       entry_date: final.entryDate || new Date().toISOString().slice(0, 10),
@@ -1001,12 +1008,8 @@ export default function StatsPage() {
       operator: final.operator,
       notes: final.notes,
       rework_order_no: final.reworkOrderNo,
+      user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
     };
-
-    // 独立账号：填入 user_id
-    if (isolatedUser?.isIsolated && isolatedUser?.userId) {
-      recordCloudData.user_id = isolatedUser.userId;
-    }
 
     if (editingId) {
       // 编辑
@@ -1047,6 +1050,9 @@ export default function StatsPage() {
         } catch (e) { user = null; }
         if (!user) { showToast('请先登录'); return; }
 
+        // 获取隔离状态（不依赖可能还没加载好的 state）
+        const isoUser = await getIsolatedUser();
+
         let totalCount = 0;
 
         for (let sheetIdx = 0; sheetIdx < wb.SheetNames.length; sheetIdx++) {
@@ -1086,7 +1092,7 @@ export default function StatsPage() {
               // 创建新 sheet
               const { data: newSheet } = await supabase
                 .from('sheets')
-                .insert({ name: sheetName, 'order': [], user_id: isolatedUser?.isIsolated ? user.id : null })
+                .insert({ name: sheetName, 'order': [], user_id: isoUser?.isIsolated ? isoUser.userId ?? user.id : null })
                 .select('id, name')
                 .single();
               if (!newSheet) continue;
@@ -1145,9 +1151,15 @@ export default function StatsPage() {
             notes: r.notes,
             rework_order_no: r.reworkOrderNo,
             comments: r.comments || null,
+            user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
           }));
 
-          await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
+          const { error: insertError } = await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
+          if (insertError) {
+            console.error('插入失败:', insertError);
+            alert(`导入失败: ${insertError.message}`);
+            continue;
+          }
           totalCount += validRecords.length;
 
           // 如果当前在导入的 sheet 上，更新记录
