@@ -473,8 +473,35 @@ export default function BoltStatsPage() {
     email: string | null;
   } | null>(null);
 
+  /* ── 监听登录状态变化 ── */
   useEffect(() => {
-    getIsolatedUser().then(setIsolatedUser).catch(() => {});
+    // 初始加载
+    getIsolatedUser(user).then(u => {
+      console.log('[Bolt Auth] 初始隔离状态:', u);
+      setIsolatedUser(u);
+    }).catch(() => {});
+
+    // 监听登录/登出事件
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Bolt Auth] 事件:', event);
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // 直接用 session.user，避免二次调用 getUser()
+        const u = session?.user
+          ? { isIsolated: session.user.email === 'test@qq.com', userId: session.user.id, email: session.user.email ?? null }
+          : { isIsolated: false, userId: null, email: null };
+        console.log('[Bolt Auth] 重新登录后隔离状态:', u);
+        setIsolatedUser(u);
+      }
+      if (event === 'SIGNED_OUT') {
+        console.log('[Bolt Auth] 登出');
+        setLocalSheets([]);
+        setSheetRecords([]);
+        setActiveSheetId(null);
+        setIsolatedUser({ isIsolated: false, userId: null, email: null });
+      }
+    });
+
+    return () => { subscription.unsubscribe(); };
   }, []);
   const navigate = useNavigate();
 

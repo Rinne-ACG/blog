@@ -21,18 +21,25 @@ export const reliabilityDb = (RELIABILITY_URL && RELIABILITY_ANON_KEY)
 /* ─── 独立账号隔离助手 ─────────────────────── */
 /**
  * 判断当前登录账号是否为"独立账号"（test@qq.com）
- * 返回 { isIsolated: boolean, userId: string|null }
+ * 返回 { isIsolated: boolean, userId: string|null, email: string|null }
+ * 可选传入 user 对象，避免重复调用 getUser()
  */
-export const getIsolatedUser = async (): Promise<{
+export const getIsolatedUser = async (
+  user?: { id: string; email?: string | null } | null,
+): Promise<{
   isIsolated: boolean;
   userId: string | null;
   email: string | null;
 }> => {
-  const { data } = await supabase.auth.getUser();
-  const user = data.user;
-  if (!user) return { isIsolated: false, userId: null, email: null };
-  const isIsolated = user.email === 'test@qq.com';
-  return { isIsolated, userId: user.id ?? null, email: user.email ?? null };
+  // 如果没传 user，再自己拿
+  let u = user;
+  if (!u) {
+    const { data } = await supabase.auth.getUser();
+    u = data.user;
+  }
+  if (!u) return { isIsolated: false, userId: null, email: null };
+  const isIsolated = u.email === 'test@qq.com';
+  return { isIsolated, userId: u.id ?? null, email: u.email ?? null };
 };
 
 /**

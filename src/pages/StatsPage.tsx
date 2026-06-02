@@ -477,8 +477,35 @@ export default function StatsPage() {
     email: string | null;
   } | null>(null);
 
+  /* ── 监听登录状态变化 ── */
   useEffect(() => {
-    getIsolatedUser().then(setIsolatedUser).catch(() => {});
+    // 初始加载
+    getIsolatedUser().then(u => {
+      console.log('[Auth] 初始隔离状态:', u);
+      setIsolatedUser(u);
+    }).catch(() => {});
+
+    // 监听登录/登出事件
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Auth] 事件:', event);
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // 直接用 session.user，避免二次调用 getUser()
+        const u = session?.user
+          ? { isIsolated: session.user.email === 'test@qq.com', userId: session.user.id, email: session.user.email ?? null }
+          : { isIsolated: false, userId: null, email: null };
+        console.log('[Auth] 重新登录后隔离状态:', u);
+        setIsolatedUser(u);
+      }
+      if (event === 'SIGNED_OUT') {
+        console.log('[Auth] 登出');
+        setLocalSheets([]);
+        setSheetRecords([]);
+        setActiveSheetId(null);
+        setIsolatedUser({ isIsolated: false, userId: null, email: null });
+      }
+    });
+
+    return () => { subscription.unsubscribe(); };
   }, []);
 
   /* ── Sheet 列表（本地缓存）── */
@@ -738,8 +765,8 @@ export default function StatsPage() {
       if (!user || ignore) return;
 
       try {
-        // 获取隔离状态（不依赖可能还没加载好的 state）
-        const isoUser = await getIsolatedUser();
+        // 传入 user 对象，避免重复调用 getUser()
+        const isoUser = await getIsolatedUser(user);
 
         // 根据隔离状态过滤 sheets
         let sheetsQuery = supabase
