@@ -476,7 +476,7 @@ export default function BoltStatsPage() {
   /* ── 监听登录状态变化 ── */
   useEffect(() => {
     // 初始加载
-    getIsolatedUser(user).then(u => {
+    getIsolatedUser().then(u => {
       console.log('[Bolt Auth] 初始隔离状态:', u);
       setIsolatedUser(u);
     }).catch(() => {});
