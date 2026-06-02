@@ -2,8 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { supabase } from '../lib/supabase';
+import { supabase, getIsolatedUser, applyUserFilter, withUserId } from '../lib/supabase';
 import type { ProductionRecord } from '../types';
+
+
 
 // 螺栓生产记录类型（无物料代码）
 type BoltProductionRecord = Omit<ProductionRecord, 'materialCode'>;
@@ -462,7 +464,30 @@ function FilterDropdown({
   );
 }
 
+// ═══════════════════════════════════════
+//   独立账号隔离状态
+//   ═══════════════════════════════════════
+const [isolatedUser, setIsolatedUser] = useState<{
+  isIsolated: boolean;
+  userId: string | null;
+  email: string | null;
+} | null>(null);
+
+effect(() => {
+  getIsolatedUser().then(setIsolatedUser).catch(() => {});
+}, []);
+
 export default function BoltStatsPage() {
+  /* ─── 独立账号隔离状态 ─── */
+  const [isolatedUser, setIsolatedUser] = useState<{
+    isIsolated: boolean;
+    userId: string | null;
+    email: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    getIsolatedUser().then(setIsolatedUser).catch(() => {});
+  }, []);
   const navigate = useNavigate();
 
   /* ── Sheet 列表（本地缓存）── */
@@ -770,11 +795,20 @@ export default function BoltStatsPage() {
   const loadRecords = async (sheetId: string, retryCount = 0) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      let query = supabase
         .from('bolt_records')
         .select('*')
         .eq('sheet_id', sheetId)
         .order('entry_date', { ascending: false });
+
+      // 根据隔离状态过滤
+      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+        query = query.eq('user_id', isolatedUser.userId);
+      } else {
+        query = query.is('user_id', null);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw error;
@@ -846,7 +880,7 @@ export default function BoltStatsPage() {
 
     const { data: newSheet } = await supabase
       .from('bolt_sheets')
-      .insert({ name, 'order': [], user_id: user.id })
+      .insert({ name, 'order': [], user_id: isolatedUser?.isIsolated ? user.id : null })
       .select('id, name')
       .single();
 
@@ -956,6 +990,11 @@ export default function BoltStatsPage() {
       rework_order_no: final.reworkOrderNo,
     };
 
+    // 独立账号：填入 user_id
+    if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+      recordCloudData.user_id = isolatedUser.userId;
+    }
+
     if (editingId) {
       // 编辑
       await supabase.from('bolt_records').update(recordCloudData).eq('id', editingId);
@@ -1034,7 +1073,7 @@ export default function BoltStatsPage() {
               // 创建新 sheet
               const { data: newSheet } = await supabase
                 .from('bolt_sheets')
-                .insert({ name: sheetName, 'order': [], user_id: user.id })
+                .insert({ name: sheetName, 'order': [], user_id: isolatedUser?.isIsolated ? user.id : null })
                 .select('id, name')
                 .single();
               if (!newSheet) continue;

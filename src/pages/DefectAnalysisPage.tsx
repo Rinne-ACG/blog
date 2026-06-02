@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { supabase } from '../lib/supabase';
+import { supabase, getIsolatedUser, applyUserFilter, withUserId } from '../lib/supabase';
 import { albums } from './GalleryPage';
 import type { DefectAnalysisRecord } from '../types';
 
@@ -147,6 +147,17 @@ function FilterDropdown({
    主组件
 ═══════════════════════════════════════════════════ */
 export default function DefectAnalysisPage() {
+  /* ─── 独立账号隔离状态 ─── */
+  const [isolatedUser, setIsolatedUser] = useState<{
+    isIsolated: boolean;
+    userId: string | null;
+    email: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    getIsolatedUser().then(setIsolatedUser).catch(() => {});
+  }, []);
+
   const navigate = useNavigate();
 
   /* ─── 工作表 ─── */
@@ -212,10 +223,19 @@ export default function DefectAnalysisPage() {
       setSheetLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { navigate('/login', { replace: true }); return; }
-      const { data, error } = await supabase
+      let query = supabase
         .from('defect_sheets')
         .select('id, name, order')
         .order('order', { ascending: true });
+
+      // 根据隔离状态过滤
+      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+        query = query.eq('user_id', isolatedUser.userId);
+      } else {
+        query = query.is('user_id', null);
+      }
+
+      const { data, error } = await query;
       if (error) { showToast('加载工作表失败', 'error'); setSheetLoading(false); return; }
       const list: LocalSheet[] = (data || []).map((s: { id: string; name: string }) => ({
         id: s.id, name: s.name,
@@ -225,18 +245,27 @@ export default function DefectAnalysisPage() {
       setSheetLoading(false);
     };
     load();
-  }, [navigate]);
+  }, [navigate, isolatedUser]);
 
   /* ─── 加载记录 ─── */
   useEffect(() => {
     if (!activeSheetId) { setSheetRecords([]); return; }
     const load = async () => {
       setRecordLoading(true);
-      const { data, error } = await supabase
+      let query = supabase
         .from('defect_records')
         .select('*')
         .eq('sheet_id', activeSheetId)
         .order('entry_date', { ascending: true });
+
+      // 根据隔离状态过滤
+      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+        query = query.eq('user_id', isolatedUser.userId);
+      } else {
+        query = query.is('user_id', null);
+      }
+
+      const { data, error } = await query;
       if (error) { showToast('加载记录失败', 'error'); setRecordLoading(false); return; }
       const records: DefectAnalysisRecord[] = (data || []).map((r: Record<string, unknown>) => ({
         id: str(r.id),
@@ -259,7 +288,7 @@ export default function DefectAnalysisPage() {
       setRecordLoading(false);
     };
     load();
-  }, [activeSheetId]);
+  }, [activeSheetId, isolatedUser]);
 
   /* ─── 筛选 + 排序 ─── */
   const filteredSorted = useCallback(() => {
@@ -330,8 +359,10 @@ export default function DefectAnalysisPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const id = generateUUID();
+    // 根据隔离状态设置 user_id
+    const userId = isolatedUser?.isIsolated ? user.id : null;
     const { error } = await supabase.from('defect_sheets').insert({
-      id, name, user_id: user.id, order: sheets.length,
+      id, name, user_id: userId, order: sheets.length,
     });
     if (error) { showToast('创建失败', 'error'); return; }
     const ns: LocalSheet = { id, name };
@@ -472,6 +503,10 @@ export default function DefectAnalysisPage() {
     };
 
     if (editingRecord) {
+      // 独立账号：填入 user_id
+      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+        dbRow.user_id = isolatedUser.userId;
+      }
       const { error } = await supabase.from('defect_records').update(dbRow).eq('id', row.id);
       if (error) { showToast('保存失败', 'error'); return; }
       setSheetRecords(prev => prev.map(r => r.id === row.id ? row : r));
@@ -479,6 +514,10 @@ export default function DefectAnalysisPage() {
       await uploadNewImages();
       showToast('已更新');
     } else {
+      // 独立账号：填入 user_id
+      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+        dbRow.user_id = isolatedUser.userId;
+      }
       const { error } = await supabase.from('defect_records').insert(dbRow);
       if (error) { showToast('新增失败', 'error'); return; }
       setSheetRecords(prev => [...prev, row]);
@@ -566,8 +605,11 @@ export default function DefectAnalysisPage() {
 
     if (imported.length === 0) { showToast('未识别到有效数据', 'error'); return; }
 
+    // 独立账号：填入 user_id
+    const isIsolated = isolatedUser?.isIsolated && isolatedUser?.userId;
     // 批量写入（entry_date 为空时传 null）
     const dbRows = imported.map(r => ({
+      ...(isIsolated ? { user_id: isolatedUser.userId } : {}),
       id: r.id, sheet_id: activeSheetId,
       entry_date: r.entryDate ? parseDate(r.entryDate) || null : null,
       seq: r.seq,

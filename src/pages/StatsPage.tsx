@@ -2,8 +2,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { supabase } from '../lib/supabase';
+import { supabase, getIsolatedUser, applyUserFilter, withUserId } from '../lib/supabase';
 import type { ProductionRecord } from '../types';
+
 
 /* ─── 工具函数 ─── */
 const generateUUID = () => {
@@ -469,6 +470,17 @@ function FilterDropdown({
 export default function StatsPage() {
   const navigate = useNavigate();
 
+  /* ─── 独立账号隔离状态 ─── */
+  const [isolatedUser, setIsolatedUser] = useState<{
+    isIsolated: boolean;
+    userId: string | null;
+    email: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    getIsolatedUser().then(setIsolatedUser).catch(() => {});
+  }, []);
+
   /* ── Sheet 列表（本地缓存）── */
   const [localSheets, setLocalSheets] = useState<LocalSheet[]>([]);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
@@ -726,19 +738,33 @@ export default function StatsPage() {
       if (!user || ignore) return;
 
       try {
-        const { data: cloudSheets, error } = await supabase
+        // 根据隔离状态过滤 sheets
+        let sheetsQuery = supabase
           .from('sheets')
           .select('id, name, "order"')
           .order('created_at', { ascending: true });
+
+        if (isolatedUser?.isIsolated) {
+          sheetsQuery = sheetsQuery.eq('user_id', isolatedUser.userId);
+        } else {
+          sheetsQuery = sheetsQuery.is('user_id', null);
+        }
+
+        const { data: cloudSheets, error } = await sheetsQuery;
 
         if (ignore) return;
         if (error) throw error;
 
         if (!cloudSheets || cloudSheets.length === 0) {
           // 首次使用，创建默认 Sheet
+          const insertData: Record<string, unknown> = { name: '工作表1', 'order': [] };
+          if (isolatedUser?.isIsolated && isolatedUser.userId) {
+            insertData.user_id = isolatedUser.userId;
+          }
+
           const { data: newSheet, error: insertError } = await supabase
             .from('sheets')
-            .insert({ name: '工作表1', 'order': [], user_id: user.id })
+            .insert(insertData)
             .select('id, name, "order"')
             .single();
           if (ignore) return;
@@ -774,11 +800,21 @@ export default function StatsPage() {
   const loadRecords = async (sheetId: string, retryCount = 0) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+
+      let recordsQuery = supabase
         .from('records')
         .select('*')
         .eq('sheet_id', sheetId)
         .order('entry_date', { ascending: false });
+
+      // 根据隔离状态过滤
+      if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+        recordsQuery = recordsQuery.eq('user_id', isolatedUser.userId);
+      } else {
+        recordsQuery = recordsQuery.is('user_id', null);
+      }
+
+      const { data, error } = await recordsQuery;
 
       if (error) {
         throw error;
@@ -843,15 +879,19 @@ export default function StatsPage() {
 
   /* ── 新建 Sheet ── */
   const addSheet = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!isolatedUser) return;
     let n = localSheets.length + 1;
     let name = `工作表${n}`;
     while (localSheets.find((s) => s.name === name)) { n++; name = `工作表${n}`; }
 
+    const insertData: Record<string, unknown> = { name, 'order': [] };
+    if (isolatedUser.isIsolated && isolatedUser.userId) {
+      insertData.user_id = isolatedUser.userId;
+    }
+
     const { data: newSheet } = await supabase
       .from('sheets')
-      .insert({ name, 'order': [], user_id: user.id })
+      .insert(insertData)
       .select('id, name')
       .single();
 
@@ -932,9 +972,9 @@ export default function StatsPage() {
       ...derived,
     };
 
-    const recordCloudData = {
+    const recordCloudData: Record<string, unknown> = {
       sheet_id: activeSheetId,
-      entry_date: final.entryDate || new Date().toISOString().slice(0, 10),  // 空日期使用今天
+      entry_date: final.entryDate || new Date().toISOString().slice(0, 10),
       seq: final.seq,
       material_code: final.materialCode,
       spec: final.spec,
@@ -962,6 +1002,11 @@ export default function StatsPage() {
       notes: final.notes,
       rework_order_no: final.reworkOrderNo,
     };
+
+    // 独立账号：填入 user_id
+    if (isolatedUser?.isIsolated && isolatedUser?.userId) {
+      recordCloudData.user_id = isolatedUser.userId;
+    }
 
     if (editingId) {
       // 编辑
@@ -1041,7 +1086,7 @@ export default function StatsPage() {
               // 创建新 sheet
               const { data: newSheet } = await supabase
                 .from('sheets')
-                .insert({ name: sheetName, 'order': [], user_id: user.id })
+                .insert({ name: sheetName, 'order': [], user_id: isolatedUser?.isIsolated ? user.id : null })
                 .select('id, name')
                 .single();
               if (!newSheet) continue;
