@@ -1223,14 +1223,36 @@ try {
       const sheetNameMap: Record<string, string> = {};
       sheetsData.forEach(s => { sheetNameMap[s.id] = s.name; });
 
-      // 2. 获取所有 records（移除 Supabase 默认 1000 行限制）
-      let recordsQuery = supabase.from('records').select('*', { count: 'exact' }).in('sheet_id', sheetIds).limit(100000);
-      const { data, error: recordsError, count } = await recordsQuery.order('created_at', { ascending: false });
-      if (recordsError) throw recordsError;
-      console.log('[整批良率] Supabase 返回记录数:', data?.length, '总数:', count);
+      // 2. 获取所有 records（使用分页查询，每次最多 1000 条）
+      let allData: any[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      let totalCount = 0;
+      
+      while (true) {
+        const { data, error: recordsError, count } = await supabase
+          .from('records')
+          .select('*', { count: 'exact' })
+          .in('sheet_id', sheetIds)
+          .order('created_at', { ascending: false })
+          .range(from, from + pageSize - 1);
+        
+        if (recordsError) throw recordsError;
+        if (data && data.length > 0) {
+          allData = allData.concat(data);
+        }
+        if (count !== null && count !== undefined) {
+          totalCount = count;
+        }
+        console.log(`[整批良率] 分页加载: ${from}-${from + pageSize - 1}, 本次获取: ${data?.length || 0}, 累计: ${allData.length}, 总数: ${totalCount}`);
+        if (!data || data.length < pageSize) break;
+        from += pageSize;
+      }
+      
+      console.log('[整批良率] 所有记录加载完成:', allData.length, '总数:', totalCount);
 
       // 3. 映射为 ProductionRecord，附加 sheetName
-      const mapped = (data ?? []).map(r => ({
+      const mapped = allData.map(r => ({
         id: r.id,
         entryDate: r.entry_date ?? '',
         seq: r.seq ?? '',
