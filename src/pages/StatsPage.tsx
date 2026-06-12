@@ -1223,10 +1223,11 @@ try {
       const sheetNameMap: Record<string, string> = {};
       sheetsData.forEach(s => { sheetNameMap[s.id] = s.name; });
 
-      // 2. 获取所有 records
-      let recordsQuery = supabase.from('records').select('*').in('sheet_id', sheetIds);
-      const { data, error: recordsError } = await recordsQuery.order('created_at', { ascending: false });
+      // 2. 获取所有 records（移除 Supabase 默认 1000 行限制）
+      let recordsQuery = supabase.from('records').select('*', { count: 'exact' }).in('sheet_id', sheetIds).limit(100000);
+      const { data, error: recordsError, count } = await recordsQuery.order('created_at', { ascending: false });
       if (recordsError) throw recordsError;
+      console.log('[整批良率] Supabase 返回记录数:', data?.length, '总数:', count);
 
       // 3. 映射为 ProductionRecord，附加 sheetName
       const mapped = (data ?? []).map(r => ({
