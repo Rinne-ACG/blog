@@ -1206,15 +1206,25 @@ export default function StatsPage() {
 
   /* ── 加载所有工作表的记录（用于整批良率跨表选择）── */
   const loadAllRecordsForBatchYield = async () => {
-try {
+    try {
       const isoUser = await getIsolatedUser();
-      // 1. 获取所有 sheets
+      console.log('[整批良率] 当前用户:', isoUser);
+      
+      // 1. 获取所有 sheets（根据隔离状态过滤）
       let sheetsQuery = supabase.from('sheets').select('id, name');
       if (isoUser.isIsolated && isoUser.userId) {
+        // 独立账号：只查自己的数据
         sheetsQuery = sheetsQuery.eq('user_id', isoUser.userId);
+      } else if (!isoUser.isIsolated) {
+        // 共享账号：只查 user_id IS NULL 的共享数据
+        sheetsQuery = sheetsQuery.is('user_id', null);
       }
+      // 如果 isoUser.isIsolated 为 false 但 userId 为空（未登录），则不过滤（查所有数据）
+      
       const { data: sheetsData, error: sheetsError } = await sheetsQuery;
       if (sheetsError) throw sheetsError;
+      console.log('[整批良率] 加载的工作表:', sheetsData?.map(s => s.name));
+      
       if (!sheetsData || sheetsData.length === 0) {
         setAllRecordsForBatchYield([]);
         return;
