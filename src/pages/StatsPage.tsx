@@ -509,6 +509,31 @@ export default function StatsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* ── 计算整批良率对话框 ── */
+  const [showBatchYieldDialog, setShowBatchYieldDialog] = useState(false);
+  const [batchYieldSelectedIds, setBatchYieldSelectedIds] = useState<Set<string>>(new Set());
+  const [batchYieldRepairedQty, setBatchYieldRepairedQty] = useState(0);
+  const [batchYieldPendingSleeveQty, setBatchYieldPendingSleeveQty] = useState(0);
+  const [batchYieldReworkOrderNo, setBatchYieldReworkOrderNo] = useState('');
+
+  // 加载上一次的重工单号
+  useEffect(() => {
+    const last = localStorage.getItem('lastBatchYieldReworkOrderNo');
+    if (last) setBatchYieldReworkOrderNo(last);
+  }, []);
+
+  // 重工单号+1
+  const incrementReworkOrderNo = (orderNo: string): string => {
+    const match = orderNo.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const prefix = match[1];
+      const num = parseInt(match[2], 10);
+      const padded = (num + 1).toString().padStart(match[2].length, '0');
+      return prefix + padded;
+    }
+    return orderNo;
+  };
+
   /* ── 工具 ── */
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -1175,6 +1200,43 @@ export default function StatsPage() {
     reader.readAsArrayBuffer(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [activeSheetId, localSheets]);
+
+  /* ── 计算整批良率 ── */
+  const handleBatchYieldCalculate = async () => {
+    if (batchYieldSelectedIds.size === 0) {
+      showToast('请至少选择一条记录');
+      return;
+    }
+    const selected = sheetRecords.filter(r => batchYieldSelectedIds.has(r.id));
+    const totalGood   = selected.reduce((s, r) => s + r.goodQty, 0);
+    const totalActual = selected.reduce((s, r) => s + r.actualQty, 0);
+    if (totalActual === 0) {
+      showToast('选中记录的实际此单总数之和为0，无法计算');
+      return;
+    }
+    const rate = round4(
+      (totalGood + batchYieldRepairedQty - batchYieldPendingSleeveQty) / totalActual * 100
+    );
+    const updates = selected.map(r =>
+      supabase.from('records').update({
+        batch_yield_rate: rate,
+        rework_order_no: batchYieldReworkOrderNo,
+      }).eq('id', r.id)
+    );
+    await Promise.all(updates);
+    setSheetRecords(prev => prev.map(r =>
+      batchYieldSelectedIds.has(r.id)
+        ? { ...r, batchYieldRate: rate, reworkOrderNo: batchYieldReworkOrderNo }
+        : r
+    ));
+    localStorage.setItem('lastBatchYieldReworkOrderNo', batchYieldReworkOrderNo);
+    setBatchYieldSelectedIds(new Set());
+    setBatchYieldRepairedQty(0);
+    setBatchYieldPendingSleeveQty(0);
+    setBatchYieldReworkOrderNo(incrementReworkOrderNo(batchYieldReworkOrderNo));
+    setShowBatchYieldDialog(false);
+    showToast(`已更新 ${selected.length} 条记录的整批良率`);
+  };
 
   /* ── 导出 Excel ── */
   const handleExport = () => {
@@ -1884,6 +1946,20 @@ export default function StatsPage() {
             导出全部
           </button>
 
+          {/* 计算整批良率 */}
+          <button onClick={() => {
+            setBatchYieldSelectedIds(new Set());
+            setBatchYieldRepairedQty(0);
+            setBatchYieldPendingSleeveQty(0);
+            setShowBatchYieldDialog(true);
+          }}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h6m-6 0l3-3m-3 3l-3-3" />
+            </svg>
+            计算整批良率
+          </button>
+
           {/* 搜索框 */}
           <div className="relative flex-1 min-w-[200px] max-w-sm ml-auto">
             <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2427,6 +2503,108 @@ export default function StatsPage() {
               <button onClick={saveRecord} disabled={saving}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
                 {saving ? '保存中…' : (editingId ? '保存修改' : '确认添加')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 计算整批良率对话框 */}
+      {showBatchYieldDialog && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-gray-800">计算整批良率</h3>
+              <button onClick={() => setShowBatchYieldDialog(false)} className="text-gray-400 hover:text-gray-600 transition">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-auto p-6 space-y-4">
+              <div className="text-sm text-gray-600">
+                已选择 <span className="font-bold text-indigo-600">{batchYieldSelectedIds.size}</span> 条记录
+              </div>
+
+              {/* 记录列表（复选框） */}
+              <div className="border border-gray-200 rounded-lg max-h-60 overflow-auto">
+                {sheetRecords.map(r => (
+                  <label key={r.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={batchYieldSelectedIds.has(r.id)}
+                      onChange={(e) => {
+                        const s = new Set(batchYieldSelectedIds);
+                        e.target.checked ? s.add(r.id) : s.delete(r.id);
+                        setBatchYieldSelectedIds(s);
+                      }}
+                      className="rounded"
+                    />
+                    <span className="text-sm font-medium text-gray-800">{r.workOrderNo || '(无单号)'}</span>
+                    <span className="text-xs text-gray-500">良品数:{r.goodQty}</span>
+                    <span className="text-xs text-gray-500">实际总数:{r.actualQty}</span>
+                  </label>
+                ))}
+              </div>
+
+              {/* 输入区域 */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">返修良品数量</label>
+                  <input
+                    type="number" min="0"
+                    value={batchYieldRepairedQty}
+                    onChange={(e) => setBatchYieldRepairedQty(Number(e.target.value) || 0)}
+                    className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">待套数量</label>
+                  <input
+                    type="number" min="0"
+                    value={batchYieldPendingSleeveQty}
+                    onChange={(e) => setBatchYieldPendingSleeveQty(Number(e.target.value) || 0)}
+                    className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">重工单号</label>
+                  <input
+                    type="text"
+                    value={batchYieldReworkOrderNo}
+                    onChange={(e) => setBatchYieldReworkOrderNo(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 公式实时预览 */}
+              {batchYieldSelectedIds.size > 0 && (() => {
+                const selected = sheetRecords.filter(r => batchYieldSelectedIds.has(r.id));
+                const totalGood   = selected.reduce((s, r) => s + r.goodQty, 0);
+                const totalActual = selected.reduce((s, r) => s + r.actualQty, 0);
+                const rate = totalActual > 0 ? round4((totalGood + batchYieldRepairedQty - batchYieldPendingSleeveQty) / totalActual * 100) : 0;
+                return (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500 mb-1">计算公式（实时预览）</div>
+                    <div className="text-sm font-mono text-gray-800">
+                      ({totalGood} + {batchYieldRepairedQty} - {batchYieldPendingSleeveQty}) / {totalActual} × 100% = <span className="font-bold text-indigo-600">{rate}%</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={() => setShowBatchYieldDialog(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition">
+                取消
+              </button>
+              <button onClick={handleBatchYieldCalculate} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition shadow-sm">
+                计算并填入
               </button>
             </div>
           </div>
