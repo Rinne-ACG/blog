@@ -27,9 +27,11 @@ const calcDerived = (f: ProductionRecord): ProductionRecord => {
   const actualQty = f.goodQty + defectSum;
   const loss = f.designQty > 0
     ? round4((actualQty - f.designQty) / f.designQty * 100) : 0;
-  const firstBottomConvexShortBurstRate = f.actualQty > 0
-    ? round4((f.defectShort + f.defectBurst + f.defectBottomConvex) / f.actualQty * 100) : 0;
-  const firstPassRate = calcRate(f.goodQty, actualQty);
+  // 修复：分母用 actualQty（良品数+不良总数），不用 f.actualQty
+  const firstBottomConvexShortBurstRate = actualQty > 0
+    ? round4((f.defectShort + f.defectBurst + f.defectBottomConvex) / actualQty * 100) : 0;
+  const firstPassRate = actualQty > 0
+    ? round4(f.goodQty / actualQty * 100) : 0;
   return { ...f, actualQty, loss, firstBottomConvexShortBurstRate, firstPassRate };
 };
 
@@ -1110,12 +1112,14 @@ export default function StatsPage() {
           // 覆盖模式：先删除该 sheet 的所有旧记录
           await supabase.from('records').delete().eq('sheet_id', localSheet!.id);
 
-          // 插入新记录
+          // 插入新记录（用 calcDerived 重新计算依赖字段）
           const today = new Date().toISOString().slice(0, 10);
-          const cloudRecords = validRecords.map((r) => ({
+          const cloudRecords = validRecords.map((r) => {
+            const derived = calcDerived(r);
+            return {
             id: generateUUID(),
             sheet_id: localSheet!.id,
-            entry_date: r.entryDate || today,  // 空日期使用今天
+            entry_date: r.entryDate || today,
             seq: r.seq,
             material_code: r.materialCode,
             spec: r.spec,
@@ -1123,12 +1127,12 @@ export default function StatsPage() {
             work_order_no: r.workOrderNo,
             positive_foil_voltage: r.positiveFoilVoltage,
             design_qty: r.designQty,
-            actual_qty: r.actualQty,
+            actual_qty: derived.actualQty,
             winding_qty: r.windingQty,
             good_qty: r.goodQty,
-            loss: r.loss,
-            first_bottom_convex_short_burst_rate: r.firstBottomConvexShortBurstRate,
-            first_pass_rate: r.firstPassRate,
+            loss: derived.loss,
+            first_bottom_convex_short_burst_rate: derived.firstBottomConvexShortBurstRate,
+            first_pass_rate: derived.firstPassRate,
             batch_yield_rate: r.batchYieldRate,
             defect_short: r.defectShort,
             defect_burst: r.defectBurst,
@@ -1144,7 +1148,7 @@ export default function StatsPage() {
             rework_order_no: r.reworkOrderNo,
             comments: r.comments || null,
             user_id: (isoUser.isIsolated && isoUser.userId) ? isoUser.userId : null,
-          }));
+          };});
 
           const { error: insertError } = await supabase.from('records').insert(cloudRecords as Record<string, unknown>[]);
           if (insertError) {
