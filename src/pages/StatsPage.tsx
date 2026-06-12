@@ -1208,7 +1208,6 @@ export default function StatsPage() {
   const loadAllRecordsForBatchYield = async () => {
     try {
       const isoUser = await getIsolatedUser();
-      console.log('[整批良率] 当前用户:', isoUser);
       
       // 1. 获取所有 sheets（根据隔离状态过滤）
       let sheetsQuery = supabase.from('sheets').select('id, name');
@@ -1223,7 +1222,6 @@ export default function StatsPage() {
       
       const { data: sheetsData, error: sheetsError } = await sheetsQuery;
       if (sheetsError) throw sheetsError;
-      console.log('[整批良率] 加载的工作表:', sheetsData?.map(s => s.name));
       
       if (!sheetsData || sheetsData.length === 0) {
         setAllRecordsForBatchYield([]);
@@ -1237,12 +1235,11 @@ export default function StatsPage() {
       let allData: any[] = [];
       const pageSize = 1000;
       let from = 0;
-      let totalCount = 0;
       
       while (true) {
-        const { data, error: recordsError, count } = await supabase
+        const { data, error: recordsError } = await supabase
           .from('records')
-          .select('*', { count: 'exact' })
+          .select('*')
           .in('sheet_id', sheetIds)
           .order('created_at', { ascending: false })
           .range(from, from + pageSize - 1);
@@ -1251,16 +1248,10 @@ export default function StatsPage() {
         if (data && data.length > 0) {
           allData = allData.concat(data);
         }
-        if (count !== null && count !== undefined) {
-          totalCount = count;
-        }
-        console.log(`[整批良率] 分页加载: ${from}-${from + pageSize - 1}, 本次获取: ${data?.length || 0}, 累计: ${allData.length}, 总数: ${totalCount}`);
         if (!data || data.length < pageSize) break;
         from += pageSize;
       }
       
-      console.log('[整批良率] 所有记录加载完成:', allData.length, '总数:', totalCount);
-
       // 3. 映射为 ProductionRecord，附加 sheetName
       const mapped = allData.map(r => ({
         id: r.id,
@@ -1295,12 +1286,6 @@ export default function StatsPage() {
         user_id: r.user_id ?? undefined,
         sheetName: sheetNameMap[r.sheet_id] || '',
       }));
-      console.log('[整批良率] 加载所有记录完成:', {
-        sheetsCount: sheetsData?.length ?? 0,
-        recordsCount: mapped.length,
-        sheets: sheetsData?.map(s => s.name) ?? [],
-        workOrderNos: mapped.map(r => r.workOrderNo).filter(Boolean).slice(0, 10)
-      });
       setAllRecordsForBatchYield(mapped);
     } catch (err) {
       console.error('加载所有记录失败:', err);
@@ -2661,12 +2646,6 @@ export default function StatsPage() {
                       (r.workOrderNo || '').includes(keyword)
                     )
                   : [];
-                console.log('[整批良率] 搜索过滤:', {
-                  keyword,
-                  totalRecords: allRecordsForBatchYield.length,
-                  filteredCount: filtered.length,
-                  filtered: filtered.map(r => ({ id: r.id, workOrderNo: r.workOrderNo, sheetName: r.sheetName }))
-                });
                 if (filtered.length === 0) return (
                   <div className="border border-gray-200 rounded-lg bg-white shadow-lg p-3 text-xs text-gray-400">
                     未找到匹配"{keyword}"的流转单号
