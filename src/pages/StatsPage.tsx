@@ -510,6 +510,8 @@ export default function StatsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ── 计算整批良率对话框 ── */
+  // 所有工作表的记录（用于整批良率跨表选择）
+  const [allRecordsForBatchYield, setAllRecordsForBatchYield] = useState<(ProductionRecord & { sheetName?: string })[]>([]);
   const [showBatchYieldDialog, setShowBatchYieldDialog] = useState(false);
   const [batchYieldSelectedIds, setBatchYieldSelectedIds] = useState<Set<string>>(new Set());
   const [batchYieldSearch, setBatchYieldSearch] = useState('');
@@ -1202,13 +1204,79 @@ export default function StatsPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [activeSheetId, localSheets]);
 
+  /* ── 加载所有工作表的记录（用于整批良率跨表选择）── */
+  const loadAllRecordsForBatchYield = async () => {
+try {
+      const isoUser = await getIsolatedUser();
+      // 1. 获取所有 sheets
+      let sheetsQuery = supabase.from('sheets').select('id, name');
+      if (isoUser.isIsolated && isoUser.userId) {
+        sheetsQuery = sheetsQuery.eq('user_id', isoUser.userId);
+      }
+      const { data: sheetsData, error: sheetsError } = await sheetsQuery;
+      if (sheetsError) throw sheetsError;
+      if (!sheetsData || sheetsData.length === 0) {
+        setAllRecordsForBatchYield([]);
+        return;
+      }
+      const sheetIds = sheetsData.map(s => s.id);
+      const sheetNameMap: Record<string, string> = {};
+      sheetsData.forEach(s => { sheetNameMap[s.id] = s.name; });
+
+      // 2. 获取所有 records
+      let recordsQuery = supabase.from('records').select('*').in('sheet_id', sheetIds);
+      const { data, error: recordsError } = await recordsQuery.order('created_at', { ascending: false });
+      if (recordsError) throw recordsError;
+
+      // 3. 映射为 ProductionRecord，附加 sheetName
+      const mapped = (data ?? []).map(r => ({
+        id: r.id,
+        entryDate: r.entry_date ?? '',
+        seq: r.seq ?? '',
+        materialCode: r.material_code ?? '',
+        spec: r.spec ?? '',
+        size: r.size ?? '',
+        workOrderNo: r.work_order_no ?? '',
+        positiveFoilVoltage: r.positive_foil_voltage ?? '',
+        designQty: r.design_qty ?? 0,
+        actualQty: r.actual_qty ?? 0,
+        windingQty: r.winding_qty ?? 0,
+        goodQty: r.good_qty ?? 0,
+        loss: r.loss ?? 0,
+        firstBottomConvexShortBurstRate: r.first_bottom_convex_short_burst_rate ?? 0,
+        firstPassRate: r.first_pass_rate ?? 0,
+        batchYieldRate: r.batch_yield_rate ?? 0,
+        defectShort: r.defect_short ?? 0,
+        defectBurst: r.defect_burst ?? 0,
+        defectBottomConvex: r.defect_bottom_convex ?? 0,
+        defectVoltage: r.defect_voltage ?? 0,
+        defectAppearance: r.defect_appearance ?? 0,
+        defectLeakage: r.defect_leakage ?? 0,
+        defectHighCap: r.defect_high_cap ?? 0,
+        defectLowCap: r.defect_low_cap ?? 0,
+        defectDF: r.defect_df ?? 0,
+        operator: r.operator ?? '',
+        notes: r.notes ?? '',
+        reworkOrderNo: r.rework_order_no ?? '',
+        comments: r.comments ?? undefined,
+        user_id: r.user_id ?? undefined,
+        sheetName: sheetNameMap[r.sheet_id] || '',
+      }));
+      setAllRecordsForBatchYield(mapped);
+    } catch (err) {
+      console.error('加载所有记录失败:', err);
+      showToast('加载所有记录失败');
+    } finally {
+}
+  };
+
   /* ── 计算整批良率 ── */
   const handleBatchYieldCalculate = async () => {
     if (batchYieldSelectedIds.size === 0) {
       showToast('请至少选择一条记录');
       return;
     }
-    const selected = sheetRecords.filter(r => batchYieldSelectedIds.has(r.id));
+    const selected = allRecordsForBatchYield.filter(r => batchYieldSelectedIds.has(r.id));
     const totalGood   = selected.reduce((s, r) => s + r.goodQty, 0);
     const totalActual = selected.reduce((s, r) => s + r.actualQty, 0);
     if (totalActual === 0) {
@@ -1226,6 +1294,12 @@ export default function StatsPage() {
     );
     await Promise.all(updates);
     setSheetRecords(prev => prev.map(r =>
+      batchYieldSelectedIds.has(r.id)
+        ? { ...r, batchYieldRate: rate, reworkOrderNo: batchYieldReworkOrderNo }
+        : r
+    ));
+    // 同步更新 allRecordsForBatchYield
+    setAllRecordsForBatchYield(prev => prev.map(r =>
       batchYieldSelectedIds.has(r.id)
         ? { ...r, batchYieldRate: rate, reworkOrderNo: batchYieldReworkOrderNo }
         : r
@@ -1948,11 +2022,12 @@ export default function StatsPage() {
           </button>
 
           {/* 计算整批良率 */}
-          <button onClick={() => {
+          <button onClick={async () => {
             setBatchYieldSelectedIds(new Set());
             setBatchYieldSearch('');
             setBatchYieldRepairedQty(0);
             setBatchYieldPendingSleeveQty(0);
+            await loadAllRecordsForBatchYield();
             setShowBatchYieldDialog(true);
           }}
             className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
@@ -2542,7 +2617,7 @@ export default function StatsPage() {
               {batchYieldSearch && (() => {
                 const keyword = batchYieldSearch.trim();
                 const filtered = keyword
-                  ? sheetRecords.filter(r =>
+                  ? allRecordsForBatchYield.filter(r =>
                       !batchYieldSelectedIds.has(r.id) &&
                       (r.workOrderNo || '').includes(keyword)
                     )
@@ -2559,9 +2634,11 @@ export default function StatsPage() {
                         }}
                         className="flex items-center gap-3 px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                       >
+                        <span className="text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">{r.sheetName || '未知表'}</span>
+                        <span className="text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">{r.sheetName || '未知表'}</span>
                         <span className="text-sm font-medium text-gray-800">{r.workOrderNo || '(无单号)'}</span>
-                        <span className="text-xs text-gray-500">良品数:{r.goodQty}</span>
-                        <span className="text-xs text-gray-500">实际总数:{r.actualQty}</span>
+                        <span className="text-xs text-gray-500">良品:{r.goodQty}</span>
+                        <span className="text-xs text-gray-500">实际:{r.actualQty}</span>
                       </div>
                     ))}
                   </div>
@@ -2575,7 +2652,7 @@ export default function StatsPage() {
                     已选择 <span className="font-bold text-indigo-600">{batchYieldSelectedIds.size}</span> 条记录
                   </div>
                   <div className="border border-indigo-200 rounded-lg bg-indigo-50/30 max-h-44 overflow-auto">
-                    {sheetRecords
+                    {allRecordsForBatchYield
                       .filter(r => batchYieldSelectedIds.has(r.id))
                       .map(r => (
                         <div key={r.id} className="flex items-center justify-between px-3 py-2 border-b border-indigo-100 last:border-b-0">
@@ -2633,7 +2710,7 @@ export default function StatsPage() {
 
               {/* 公式实时预览 */}
               {batchYieldSelectedIds.size > 0 && (() => {
-                const selected = sheetRecords.filter(r => batchYieldSelectedIds.has(r.id));
+                const selected = allRecordsForBatchYield.filter(r => batchYieldSelectedIds.has(r.id));
                 const totalGood   = selected.reduce((s, r) => s + r.goodQty, 0);
                 const totalActual = selected.reduce((s, r) => s + r.actualQty, 0);
                 const rate = totalActual > 0 ? round4((totalGood + batchYieldRepairedQty - batchYieldPendingSleeveQty) / totalActual * 100) : 0;
