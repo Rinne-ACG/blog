@@ -1262,6 +1262,12 @@ try {
         user_id: r.user_id ?? undefined,
         sheetName: sheetNameMap[r.sheet_id] || '',
       }));
+      console.log('[整批良率] 加载所有记录完成:', {
+        sheetsCount: sheetsData?.length ?? 0,
+        recordsCount: mapped.length,
+        sheets: sheetsData?.map(s => s.name) ?? [],
+        workOrderNos: mapped.map(r => r.workOrderNo).filter(Boolean).slice(0, 10)
+      });
       setAllRecordsForBatchYield(mapped);
     } catch (err) {
       console.error('加载所有记录失败:', err);
@@ -2622,7 +2628,17 @@ try {
                       (r.workOrderNo || '').includes(keyword)
                     )
                   : [];
-                if (filtered.length === 0) return null;
+                console.log('[整批良率] 搜索过滤:', {
+                  keyword,
+                  totalRecords: allRecordsForBatchYield.length,
+                  filteredCount: filtered.length,
+                  filtered: filtered.map(r => ({ id: r.id, workOrderNo: r.workOrderNo, sheetName: r.sheetName }))
+                });
+                if (filtered.length === 0) return (
+                  <div className="border border-gray-200 rounded-lg bg-white shadow-lg p-3 text-xs text-gray-400">
+                    未找到匹配"{keyword}"的流转单号
+                  </div>
+                );
                 return (
                   <div className="border border-gray-200 rounded-lg max-h-44 overflow-auto bg-white shadow-lg">
                     {filtered.map(r => (
