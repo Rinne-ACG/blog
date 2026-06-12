@@ -2684,10 +2684,15 @@ export default function StatsPage() {
                         className="flex items-center gap-3 px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                       >
                         <span className="text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">{r.sheetName || '未知表'}</span>
-                        <span className="text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">{r.sheetName || '未知表'}</span>
                         <span className="text-sm font-medium text-gray-800">{r.workOrderNo || '(无单号)'}</span>
                         <span className="text-xs text-gray-500">良品:{r.goodQty}</span>
                         <span className="text-xs text-gray-500">实际:{r.actualQty}</span>
+                        {r.reworkOrderNo && (
+                          <span className="text-xs text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">重工:{r.reworkOrderNo}</span>
+                        )}
+                        {r.batchYieldRate !== undefined && r.batchYieldRate !== null && (
+                          <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">良率:{r.batchYieldRate}%</span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2707,8 +2712,14 @@ export default function StatsPage() {
                         <div key={r.id} className="flex items-center justify-between px-3 py-2 border-b border-indigo-100 last:border-b-0">
                           <div className="flex items-center gap-3">
                             <span className="text-sm font-medium text-gray-800">{r.workOrderNo || '(无单号)'}</span>
-                            <span className="text-xs text-gray-500">良品数:{r.goodQty}</span>
-                            <span className="text-xs text-gray-500">实际总数:{r.actualQty}</span>
+                            <span className="text-xs text-gray-500">良品:{r.goodQty}</span>
+                            <span className="text-xs text-gray-500">实际:{r.actualQty}</span>
+                            {r.reworkOrderNo && (
+                              <span className="text-xs text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">重工:{r.reworkOrderNo}</span>
+                            )}
+                            {r.batchYieldRate !== undefined && r.batchYieldRate !== null && (
+                              <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">良率:{r.batchYieldRate}%</span>
+                            )}
                           </div>
                           <button
                             onClick={() => {
