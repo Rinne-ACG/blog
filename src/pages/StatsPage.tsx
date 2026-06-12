@@ -515,8 +515,8 @@ export default function StatsPage() {
   const [showBatchYieldDialog, setShowBatchYieldDialog] = useState(false);
   const [batchYieldSelectedIds, setBatchYieldSelectedIds] = useState<Set<string>>(new Set());
   const [batchYieldSearch, setBatchYieldSearch] = useState('');
-  const [batchYieldRepairedQty, setBatchYieldRepairedQty] = useState(0);
-  const [batchYieldPendingSleeveQty, setBatchYieldPendingSleeveQty] = useState(0);
+  const [batchYieldRepairedQty, setBatchYieldRepairedQty] = useState('');
+  const [batchYieldPendingSleeveQty, setBatchYieldPendingSleeveQty] = useState('');
   const [batchYieldReworkOrderNo, setBatchYieldReworkOrderNo] = useState('');
 
   // 加载上一次的重工单号
@@ -1284,7 +1284,7 @@ try {
       return;
     }
     const rate = round4(
-      (totalGood + batchYieldRepairedQty - batchYieldPendingSleeveQty) / totalActual * 100
+      (totalGood + Number(batchYieldRepairedQty || 0) - Number(batchYieldPendingSleeveQty || 0)) / totalActual * 100
     );
     const updates = selected.map(r =>
       supabase.from('records').update({
@@ -1306,8 +1306,8 @@ try {
     ));
     localStorage.setItem('lastBatchYieldReworkOrderNo', batchYieldReworkOrderNo);
     setBatchYieldSelectedIds(new Set());
-    setBatchYieldRepairedQty(0);
-    setBatchYieldPendingSleeveQty(0);
+    setBatchYieldRepairedQty('');
+    setBatchYieldPendingSleeveQty('');
     setBatchYieldReworkOrderNo(incrementReworkOrderNo(batchYieldReworkOrderNo));
     setShowBatchYieldDialog(false);
     showToast(`已更新 ${selected.length} 条记录的整批良率`);
@@ -2025,8 +2025,8 @@ try {
           <button onClick={async () => {
             setBatchYieldSelectedIds(new Set());
             setBatchYieldSearch('');
-            setBatchYieldRepairedQty(0);
-            setBatchYieldPendingSleeveQty(0);
+            setBatchYieldRepairedQty('');
+            setBatchYieldPendingSleeveQty('');
             await loadAllRecordsForBatchYield();
             setShowBatchYieldDialog(true);
           }}
@@ -2684,7 +2684,8 @@ try {
                   <input
                     type="number" min="0"
                     value={batchYieldRepairedQty}
-                    onChange={(e) => setBatchYieldRepairedQty(Number(e.target.value) || 0)}
+                    onChange={(e) => setBatchYieldRepairedQty(e.target.value)}
+                    placeholder="0"
                     className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm"
                   />
                 </div>
@@ -2693,7 +2694,8 @@ try {
                   <input
                     type="number" min="0"
                     value={batchYieldPendingSleeveQty}
-                    onChange={(e) => setBatchYieldPendingSleeveQty(Number(e.target.value) || 0)}
+                    onChange={(e) => setBatchYieldPendingSleeveQty(e.target.value)}
+                    placeholder="0"
                     className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm"
                   />
                 </div>
@@ -2713,7 +2715,7 @@ try {
                 const selected = allRecordsForBatchYield.filter(r => batchYieldSelectedIds.has(r.id));
                 const totalGood   = selected.reduce((s, r) => s + r.goodQty, 0);
                 const totalActual = selected.reduce((s, r) => s + r.actualQty, 0);
-                const rate = totalActual > 0 ? round4((totalGood + batchYieldRepairedQty - batchYieldPendingSleeveQty) / totalActual * 100) : 0;
+                const rate = totalActual > 0 ? round4((totalGood + Number(batchYieldRepairedQty || 0) - Number(batchYieldPendingSleeveQty || 0)) / totalActual * 100) : 0;
                 return (
                   <div className="bg-gray-50 rounded-lg p-3">
                     <div className="text-xs text-gray-500 mb-1">计算公式（实时预览）</div>
