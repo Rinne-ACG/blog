@@ -512,6 +512,7 @@ export default function StatsPage() {
   /* ── 计算整批良率对话框 ── */
   const [showBatchYieldDialog, setShowBatchYieldDialog] = useState(false);
   const [batchYieldSelectedIds, setBatchYieldSelectedIds] = useState<Set<string>>(new Set());
+  const [batchYieldSearch, setBatchYieldSearch] = useState('');
   const [batchYieldRepairedQty, setBatchYieldRepairedQty] = useState(0);
   const [batchYieldPendingSleeveQty, setBatchYieldPendingSleeveQty] = useState(0);
   const [batchYieldReworkOrderNo, setBatchYieldReworkOrderNo] = useState('');
@@ -1949,6 +1950,7 @@ export default function StatsPage() {
           {/* 计算整批良率 */}
           <button onClick={() => {
             setBatchYieldSelectedIds(new Set());
+            setBatchYieldSearch('');
             setBatchYieldRepairedQty(0);
             setBatchYieldPendingSleeveQty(0);
             setShowBatchYieldDialog(true);
@@ -2525,30 +2527,78 @@ export default function StatsPage() {
 
             {/* Body */}
             <div className="flex-1 overflow-auto p-6 space-y-4">
-              <div className="text-sm text-gray-600">
-                已选择 <span className="font-bold text-indigo-600">{batchYieldSelectedIds.size}</span> 条记录
+              {/* 搜索框 */}
+              <div>
+                <input
+                  type="text"
+                  value={batchYieldSearch}
+                  onChange={(e) => setBatchYieldSearch(e.target.value)}
+                  placeholder="输入流转单号关键词搜索（如 094）"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-indigo-400"
+                />
               </div>
 
-              {/* 记录列表（复选框） */}
-              <div className="border border-gray-200 rounded-lg max-h-60 overflow-auto">
-                {sheetRecords.map(r => (
-                  <label key={r.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={batchYieldSelectedIds.has(r.id)}
-                      onChange={(e) => {
-                        const s = new Set(batchYieldSelectedIds);
-                        e.target.checked ? s.add(r.id) : s.delete(r.id);
-                        setBatchYieldSelectedIds(s);
-                      }}
-                      className="rounded"
-                    />
-                    <span className="text-sm font-medium text-gray-800">{r.workOrderNo || '(无单号)'}</span>
-                    <span className="text-xs text-gray-500">良品数:{r.goodQty}</span>
-                    <span className="text-xs text-gray-500">实际总数:{r.actualQty}</span>
-                  </label>
-                ))}
-              </div>
+              {/* 搜索结果下拉 */}
+              {batchYieldSearch && (() => {
+                const keyword = batchYieldSearch.trim();
+                const filtered = keyword
+                  ? sheetRecords.filter(r =>
+                      !batchYieldSelectedIds.has(r.id) &&
+                      (r.workOrderNo || '').includes(keyword)
+                    )
+                  : [];
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="border border-gray-200 rounded-lg max-h-44 overflow-auto bg-white shadow-lg">
+                    {filtered.map(r => (
+                      <div
+                        key={r.id}
+                        onClick={() => {
+                          setBatchYieldSelectedIds(prev => new Set([...prev, r.id]));
+                          setBatchYieldSearch('');
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <span className="text-sm font-medium text-gray-800">{r.workOrderNo || '(无单号)'}</span>
+                        <span className="text-xs text-gray-500">良品数:{r.goodQty}</span>
+                        <span className="text-xs text-gray-500">实际总数:{r.actualQty}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* 已选择区域 */}
+              {batchYieldSelectedIds.size > 0 && (
+                <div>
+                  <div className="text-sm text-gray-600 mb-2">
+                    已选择 <span className="font-bold text-indigo-600">{batchYieldSelectedIds.size}</span> 条记录
+                  </div>
+                  <div className="border border-indigo-200 rounded-lg bg-indigo-50/30 max-h-44 overflow-auto">
+                    {sheetRecords
+                      .filter(r => batchYieldSelectedIds.has(r.id))
+                      .map(r => (
+                        <div key={r.id} className="flex items-center justify-between px-3 py-2 border-b border-indigo-100 last:border-b-0">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-medium text-gray-800">{r.workOrderNo || '(无单号)'}</span>
+                            <span className="text-xs text-gray-500">良品数:{r.goodQty}</span>
+                            <span className="text-xs text-gray-500">实际总数:{r.actualQty}</span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const s = new Set(batchYieldSelectedIds);
+                              s.delete(r.id);
+                              setBatchYieldSelectedIds(s);
+                            }}
+                            className="text-red-400 hover:text-red-600 text-lg leading-none"
+                            title="取消选择"
+                          >×</button>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+              )}
 
               {/* 输入区域 */}
               <div className="grid grid-cols-3 gap-3">
