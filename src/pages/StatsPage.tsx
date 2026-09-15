@@ -136,6 +136,20 @@ const parseExcelNativeComments = async (
 const num = (v: unknown) => Number(v) || 0;
 const str = (v: unknown) => String(v ?? '');
 
+// 标准化日期字符串：支持 YYYY-M-D / YYYY/M/D / YYYY.M.D / YYYY年M月D日（含日期时间后缀）
+// 无效（空格、空串、格式错误、月份/日期越界）返回 ''
+const normalizeDate = (s: string) => {
+  const t = (s || '').trim();
+  if (!t) return '';
+  let m = t.match(/^(\d{4})[-](\d{1,2})[-](\d{1,2})/);
+  if (!m) m = t.match(/^(\d{4})[/._年](\d{1,2})[/._月](\d{1,2})日?/);
+  if (!m) return '';
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+  return `${m[1]}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+};
+
 function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof str, rowComments: Map<string, string>) {
   const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 }) as unknown[][];
   if (raw.length < 2) return [];
@@ -223,7 +237,7 @@ function parseSheetRecords(ws: XLSX.WorkSheet, numFn: typeof num, strFn: typeof 
       const d = XLSX.SSF.parse_date_code(rawDate);
       entryDate = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
     } else {
-      entryDate = strFn(rawDate).slice(0, 10);
+      entryDate = normalizeDate(strFn(rawDate));
     }
 
     const base: ProductionRecord = {
@@ -1015,7 +1029,7 @@ export default function StatsPage() {
     const isoUser = await getIsolatedUser();
     const recordCloudData: Record<string, unknown> = {
       sheet_id: activeSheetId,
-      entry_date: final.entryDate || new Date().toISOString().slice(0, 10),
+      entry_date: normalizeDate(final.entryDate) || new Date().toISOString().slice(0, 10),
       seq: final.seq,
       material_code: final.materialCode,
       spec: final.spec,
@@ -1147,7 +1161,7 @@ export default function StatsPage() {
             return {
             id: generateUUID(),
             sheet_id: localSheet!.id,
-            entry_date: r.entryDate || today,
+            entry_date: normalizeDate(r.entryDate) || today,
             seq: r.seq,
             material_code: r.materialCode,
             spec: r.spec,
