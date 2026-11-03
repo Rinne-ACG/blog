@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
@@ -339,6 +339,38 @@ const EXPORT_COLUMNS: { key: keyof ProductionRecord; label: string; width: numbe
   { key: 'notes', label: '备注', width: 20 },
   { key: 'reworkOrderNo', label: '重工单号', width: 14 },
 ];
+
+/* ─── 表格显示列定义（用于列显示/隐藏控制） ─── */
+const TABLE_COLUMNS: { key: string; label: string; width: number }[] = [
+  { key: 'entryDate', label: '录入日期', width: 100 },
+  { key: 'seq', label: '序号', width: 50 },
+  { key: 'materialCode', label: '物料代码', width: 120 },
+  { key: 'spec', label: '规格', width: 80 },
+  { key: 'size', label: '尺寸', width: 80 },
+  { key: 'workOrderNo', label: '流转单号', width: 120 },
+  { key: 'positiveFoilVoltage', label: '正箔电压', width: 80 },
+  { key: 'designQty', label: '设计数量', width: 100 },
+  { key: 'actualQty', label: '实际此单总数', width: 110 },
+  { key: 'windingQty', label: '卷绕数', width: 90 },
+  { key: 'goodQty', label: '良品数', width: 90 },
+  { key: 'loss', label: '损耗(%)', width: 80 },
+  { key: 'firstBottomConvexShortBurstRate', label: '一次底凸短路爆破率(%)', width: 100 },
+  { key: 'firstPassRate', label: '老化、测试良品率(%)', width: 90 },
+  { key: 'batchYieldRate', label: '整批良率(%)', width: 80 },
+  { key: 'defectShort', label: '短路', width: 60 },
+  { key: 'defectBurst', label: '爆破', width: 60 },
+  { key: 'defectBottomConvex', label: '底凸', width: 60 },
+  { key: 'defectVoltage', label: '耐压', width: 60 },
+  { key: 'defectAppearance', label: '外观', width: 60 },
+  { key: 'defectLeakage', label: '漏电', width: 60 },
+  { key: 'defectHighCap', label: '高容', width: 60 },
+  { key: 'defectLowCap', label: '低容', width: 60 },
+  { key: 'defectDF', label: 'DF', width: 80 },
+  { key: 'operator', label: '作业员', width: 130 },
+  { key: 'notes', label: '备注', width: 100 },
+  { key: 'reworkOrderNo', label: '重工单号', width: 70 },
+  { key: '__actions__', label: '操作', width: 70 },
+];
 // 批注字段映射（用于导出的列名）
 const COMMENT_FIELD_LABELS: Record<string, string> = {
   entryDate: '录入日期', seq: '序号', materialCode: '物料代码', spec: '规格',
@@ -511,6 +543,43 @@ export default function StatsPage() {
   /* ── 列筛选状态 ── */
   const [filterOpen, setFilterOpen] = useState<string | null>(null); // 当前打开筛选的列名
   const [filterValues, setFilterValues] = useState<Record<string, Set<string>>>({}); // 每列选中的值集合
+
+  /* ── 列显示/隐藏状态 ── */
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('statsHiddenColumns');
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
+  const [columnPanelOpen, setColumnPanelOpen] = useState(false); // 列设置面板
+
+  // 持久化隐藏列配置
+  useEffect(() => {
+    localStorage.setItem('statsHiddenColumns', JSON.stringify([...hiddenColumns]));
+  }, [hiddenColumns]);
+
+  // 切换单列显示/隐藏
+  const toggleColumnVisible = (key: string) => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // 隐藏单列（表头按钮）
+  const hideColumn = (key: string) => {
+    setHiddenColumns((prev) => new Set(prev).add(key));
+    setFilterOpen(null);
+  };
+
+  // 可见列（操作列始终显示）
+  const visibleColumns = TABLE_COLUMNS.filter(
+    (c) => c.key === '__actions__' || !hiddenColumns.has(c.key)
+  );
 
   /* ── 批注状态 ── */
   const [commentTarget, setCommentTarget] = useState<{ recordId: string; field: string } | null>(null); // 当前编辑批注的目标
@@ -752,6 +821,140 @@ export default function StatsPage() {
         )}
       </td>
     );
+  };
+
+  // 不良分类单元格（值为 0 显示 —）
+  const defectCell = (r: ProductionRecord, field: keyof ProductionRecord) => {
+    const v = r[field] as number;
+    return renderCommentCell(r, field, v ? formatNum(v) : '—');
+  };
+
+  // 根据列 key 渲染表体单元格
+  const renderBodyCell = (r: ProductionRecord, key: string) => {
+    switch (key) {
+      case 'entryDate':
+        return renderCommentCell(r, 'entryDate', r.entryDate, 'whitespace-normal');
+      case 'seq':
+        return renderCommentCell(r, 'seq', r.seq);
+      case 'materialCode':
+        return renderCommentCell(r, 'materialCode', r.materialCode, 'font-medium text-gray-800');
+      case 'spec':
+        return renderCommentCell(r, 'spec', r.spec);
+      case 'size':
+        return renderCommentCell(r, 'size', r.size);
+      case 'workOrderNo':
+        return renderCommentCell(r, 'workOrderNo', r.workOrderNo);
+      case 'positiveFoilVoltage':
+        return renderCommentCell(r, 'positiveFoilVoltage', r.positiveFoilVoltage);
+      case 'designQty':
+        return renderCommentCell(r, 'designQty', r.designQty.toLocaleString());
+      case 'actualQty':
+        return renderCommentCell(r, 'actualQty', r.actualQty.toLocaleString());
+      case 'windingQty':
+        return renderCommentCell(r, 'windingQty', r.windingQty.toLocaleString());
+      case 'goodQty':
+        return renderCommentCell(r, 'goodQty', r.goodQty.toLocaleString());
+      case 'loss': {
+        const absLoss = Math.abs(r.loss);
+        const hasComment = r.comments && r.comments['loss'];
+        const colorClass = absLoss > 1
+          ? (hasComment ? 'text-yellow-600' : 'text-red-600')
+          : (hasComment ? 'text-orange-500' : '');
+        return renderCommentCell(r, 'loss', r.loss >= 0 ? `+${formatNum(r.loss)}%` : `${formatNum(r.loss)}%`, colorClass);
+      }
+      case 'firstBottomConvexShortBurstRate': {
+        const val = r.firstBottomConvexShortBurstRate;
+        const hasComment = r.comments && r.comments['firstBottomConvexShortBurstRate'];
+        const colorClass = val > 1
+          ? (hasComment ? 'text-yellow-600' : 'text-red-600')
+          : (hasComment ? 'text-orange-500' : '');
+        return renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${formatNum(val)}%`, colorClass);
+      }
+      case 'firstPassRate':
+        return renderCommentCell(r, 'firstPassRate', `${formatNum(r.firstPassRate)}%`);
+      case 'batchYieldRate':
+        return renderCommentCell(r, 'batchYieldRate', r.batchYieldRate != null ? `${formatNum(r.batchYieldRate)}%` : '—');
+      case 'defectShort':         return defectCell(r, 'defectShort');
+      case 'defectBurst':         return defectCell(r, 'defectBurst');
+      case 'defectBottomConvex':  return defectCell(r, 'defectBottomConvex');
+      case 'defectVoltage':       return defectCell(r, 'defectVoltage');
+      case 'defectAppearance':    return defectCell(r, 'defectAppearance');
+      case 'defectLeakage':       return defectCell(r, 'defectLeakage');
+      case 'defectHighCap':       return defectCell(r, 'defectHighCap');
+      case 'defectLowCap':        return defectCell(r, 'defectLowCap');
+      case 'defectDF':            return defectCell(r, 'defectDF');
+      case 'operator':
+        return <td className="px-2 py-1.5 border border-gray-200">{r.operator}</td>;
+      case 'notes':
+        return <td className="px-2 py-1.5 max-w-[120px] truncate border border-gray-200" title={r.notes}>{r.notes}</td>;
+      case 'reworkOrderNo':
+        return renderCommentCell(r, 'reworkOrderNo', r.reworkOrderNo);
+      case '__actions__':
+        return (
+          <td className="px-2 py-1.5 border border-gray-200">
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => openEdit(r)} className="p-1 text-indigo-500 hover:text-indigo-700" title="编辑">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+              <button onClick={() => deleteRecord(r.id)} className="p-1 text-red-400 hover:text-red-600" title="删除">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+          </td>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // 根据列 key 渲染汇总行单元格（isFirst：是否为第一个可见列）
+  const renderSummaryCell = (key: string, isFirst: boolean) => {
+    const cls = 'px-2 py-1.5 text-center border border-gray-200';
+    if (isFirst) {
+      return (
+        <td className={`${cls} text-indigo-700 min-w-0 overflow-hidden truncate`}>
+          汇总 ({filtered.length} 条)
+        </td>
+      );
+    }
+    switch (key) {
+      case 'designQty':
+        return <td className={`${cls} text-indigo-900`}>{summary.totalDesign.toLocaleString()}</td>;
+      case 'actualQty':
+        return <td className={`${cls} text-indigo-600 font-medium`}>{summary.totalActual.toLocaleString()}</td>;
+      case 'windingQty':
+        return <td className={`${cls} text-indigo-900`}>{summary.totalWinding.toLocaleString()}</td>;
+      case 'goodQty':
+        return <td className={`${cls} text-green-600 font-medium`}>{summary.totalGood.toLocaleString()}</td>;
+      case 'loss':
+        return <td className={`${cls} text-indigo-900`}>{summary.lossRate >= 0 ? '+' + formatNum(summary.lossRate) + '%' : formatNum(summary.lossRate) + '%'}</td>;
+      case 'firstBottomConvexShortBurstRate':
+        return <td className={`${cls} text-red-500`}>{formatNum(summary.firstBSBRate)}%</td>;
+      case 'firstPassRate':
+        return <td className={`${cls} text-blue-600`}>{formatNum(summary.firstPassRate)}%</td>;
+      case 'batchYieldRate':
+        return <td className={`${cls} text-indigo-900`}>{summary.batchYieldRate != null ? formatNum(summary.batchYieldRate) + '%' : '—'}</td>;
+      case 'defectShort':
+      case 'defectBurst':
+      case 'defectBottomConvex':
+      case 'defectVoltage':
+      case 'defectAppearance':
+      case 'defectLeakage':
+      case 'defectHighCap':
+      case 'defectLowCap':
+      case 'defectDF': {
+        const v = (summary as unknown as Record<string, number>)[key] ?? 0;
+        return <td className={`${cls} text-indigo-600`}>{v > 0 ? formatNum(v) : '—'}</td>;
+      }
+      default:
+        return <td className={cls}></td>;
+    }
   };
 
   /* ── 汇总 ── */
@@ -2075,6 +2278,58 @@ export default function StatsPage() {
             计算整批良率
           </button>
 
+          {/* 列设置（显示/隐藏列） */}
+          <div className="relative">
+            <button
+              onClick={() => setColumnPanelOpen(!columnPanelOpen)}
+              className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              列设置
+              {hiddenColumns.size > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-600 rounded-full">
+                  隐藏 {hiddenColumns.size}
+                </span>
+              )}
+            </button>
+
+            {columnPanelOpen && (
+              <>
+                {/* 点击遮罩关闭 */}
+                <div className="fixed inset-0 z-40" onClick={() => setColumnPanelOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-xl">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
+                    <span className="text-sm font-semibold text-gray-700">显示列</span>
+                    <button
+                      onClick={() => setHiddenColumns(new Set())}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                      显示全部
+                    </button>
+                  </div>
+                  <div className="max-h-80 overflow-auto py-1">
+                    {TABLE_COLUMNS.filter((c) => c.key !== '__actions__').map((c) => (
+                      <label key={c.key}
+                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer text-sm">
+                        <input
+                          type="checkbox"
+                          checked={!hiddenColumns.has(c.key)}
+                          onChange={() => toggleColumnVisible(c.key)}
+                          className="w-3.5 h-3.5 text-indigo-600 rounded border-gray-300 cursor-pointer"
+                        />
+                        <span className="text-gray-700">{c.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="px-3 py-2 border-t border-gray-100 text-xs text-gray-400">
+                    共 {visibleColumns.length} 列显示中，配置自动保存
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* 搜索框 */}
           <div className="relative flex-1 min-w-[200px] max-w-sm ml-auto">
             <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2102,67 +2357,13 @@ export default function StatsPage() {
           <div className="min-h-[400px] max-h-[calc(100vh-280px)] overflow-auto rounded-xl border border-gray-200 shadow-sm">
             <table className="w-full text-xs border-collapse" style={{tableLayout: 'fixed'}}>
               <colgroup>
-              <col style={{width: '100px', minWidth: '100px'}} />
-              <col style={{width: '50px', minWidth: '50px'}} />
-              <col style={{width: '120px', minWidth: '120px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '120px', minWidth: '120px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '100px', minWidth: '100px'}} />
-              <col style={{width: '110px', minWidth: '110px'}} />
-              <col style={{width: '90px', minWidth: '90px'}} />
-              <col style={{width: '90px', minWidth: '90px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '100px', minWidth: '100px'}} />
-              <col style={{width: '90px', minWidth: '90px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '60px', minWidth: '60px'}} />
-              <col style={{width: '60px', minWidth: '60px'}} />
-              <col style={{width: '60px', minWidth: '60px'}} />
-              <col style={{width: '60px', minWidth: '60px'}} />
-              <col style={{width: '60px', minWidth: '60px'}} />
-              <col style={{width: '60px', minWidth: '60px'}} />
-              <col style={{width: '60px', minWidth: '60px'}} />
-              <col style={{width: '60px', minWidth: '60px'}} />
-              <col style={{width: '80px', minWidth: '80px'}} />
-              <col style={{width: '130px', minWidth: '130px'}} />
-              <col style={{width: '100px', minWidth: '100px'}} />
-              <col style={{width: '70px', minWidth: '70px'}} />
-              <col style={{width: '70px', minWidth: '70px'}} />
-            </colgroup>
+                {visibleColumns.map((c) => (
+                  <col key={c.key} style={{ width: `${c.width}px`, minWidth: `${c.width}px` }} />
+                ))}
+              </colgroup>
 <thead className="sticky top-0 z-10 bg-gray-50">
                 <tr>
-                  {[
-                    { key: 'entryDate', label: '录入日期' },
-                    { key: 'seq', label: '序号' },
-                    { key: 'materialCode', label: '物料代码' },
-                    { key: 'spec', label: '规格' },
-                    { key: 'size', label: '尺寸' },
-                    { key: 'workOrderNo', label: '流转单号' },
-                    { key: 'positiveFoilVoltage', label: '正箔电压' },
-                    { key: 'designQty', label: '设计数量' },
-                    { key: 'actualQty', label: '实际此单总数' },
-                    { key: 'windingQty', label: '卷绕数' },
-                    { key: 'goodQty', label: '良品数' },
-                    { key: 'loss', label: '损耗(%)' },
-                    { key: 'firstBottomConvexShortBurstRate', label: '一次底凸短路爆破率(%)' },
-                    { key: 'firstPassRate', label: '老化、测试良品率(%)' },
-                    { key: 'batchYieldRate', label: '整批良率(%)' },
-                    { key: 'defectShort', label: '短路' },
-                    { key: 'defectBurst', label: '爆破' },
-                    { key: 'defectBottomConvex', label: '底凸' },
-                    { key: 'defectVoltage', label: '耐压' },
-                    { key: 'defectAppearance', label: '外观' },
-                    { key: 'defectLeakage', label: '漏电' },
-                    { key: 'defectHighCap', label: '高容' },
-                    { key: 'defectLowCap', label: '低容' },
-                    { key: 'defectDF', label: 'DF' },
-                    { key: 'operator', label: '作业员' },
-                    { key: 'notes', label: '备注' },
-                    { key: 'reworkOrderNo', label: '重工单号' },
-                    { key: '__actions__', label: '' },
-                  ].map(({ key, label }) => {
+                  {visibleColumns.map(({ key, label }) => {
                     const isSorted = sortField === key;
                     const isActions = key === '__actions__';
                     const uniqueVals = isActions ? [] : getColumnUniqueValues(key as SortField);
@@ -2201,6 +2402,21 @@ export default function StatsPage() {
                               </svg>
                             </button>
                           )}
+                          {!isActions && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                hideColumn(key);
+                              }}
+                              className="ml-0.5 p-0.5 rounded text-[10px] text-gray-400 hover:bg-red-50 hover:text-red-500"
+                              title="隐藏此列"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
 
                         {/* 筛选下拉框 */}
@@ -2222,84 +2438,20 @@ export default function StatsPage() {
                     );
                   })}
                 </tr>
-              </thead><tfoot>
-                  <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
-                    <td className="px-2 py-1.5 text-indigo-700 text-center min-w-0 overflow-hidden truncate border border-gray-200" style={{width:'100px'}}>汇总 ({filtered.length} 条)</td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'50px'}}></td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'120px'}}></td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'120px'}}></td>
-                    <td className="px-2 py-1.5 border border-gray-200" style={{width:'80px'}}></td>
-                    <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'90px'}}>{summary.totalDesign.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 font-medium border border-gray-200" style={{width:'90px'}}>{summary.totalActual.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'80px'}}>{summary.totalWinding.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center text-green-600 font-medium border border-gray-200" style={{width:'80px'}}>{summary.totalGood.toLocaleString()}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'80px'}}>{summary.lossRate >= 0 ? "+" + formatNum(summary.lossRate) + "%" : formatNum(summary.lossRate) + "%"}</td>
-                    <td className="px-2 py-1.5 text-center text-red-500 border border-gray-200" style={{width:'100px'}}>{formatNum(summary.firstBSBRate)}%</td>
-                    <td className="px-2 py-1.5 text-center text-blue-600 border border-gray-200" style={{width:'80px'}}>{formatNum(summary.firstPassRate)}%</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-900 border border-gray-200" style={{width:'80px'}}>{summary.batchYieldRate != null ? formatNum(summary.batchYieldRate) + "%" : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectShort > 0 ? formatNum(summary.defectShort) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectBurst > 0 ? formatNum(summary.defectBurst) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectBottomConvex > 0 ? formatNum(summary.defectBottomConvex) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectVoltage > 0 ? formatNum(summary.defectVoltage) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectAppearance > 0 ? formatNum(summary.defectAppearance) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectLeakage > 0 ? formatNum(summary.defectLeakage) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectHighCap > 0 ? formatNum(summary.defectHighCap) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectLowCap > 0 ? formatNum(summary.defectLowCap) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-600 border border-gray-200" style={{width:'60px'}}>{summary.defectDF > 0 ? formatNum(summary.defectDF) : "—"}</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400 border border-gray-200" style={{width:'80px'}}>—</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400 border border-gray-200" style={{width:'150px'}}>—</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400 border border-gray-200" style={{width:'100px'}}>—</td>
-                    <td className="px-2 py-1.5 text-center text-indigo-400 border border-gray-200" style={{width:'70px'}}>—</td>
-                  </tr>
-                </tfoot><tbody>
+              </thead>
+              <tfoot>
+                <tr className="bg-indigo-50 border-t-2 border-indigo-200 font-bold text-xs">
+                  {visibleColumns.map((c, i) => (
+                    <Fragment key={c.key}>{renderSummaryCell(c.key, i === 0)}</Fragment>
+                  ))}
+                </tr>
+              </tfoot>
+              <tbody>
                 {filtered.map((r, i) => (
                   <tr key={r.id} className={`group hover:bg-indigo-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                    {renderCommentCell(r, 'entryDate', r.entryDate, 'whitespace-normal')}
-                    {renderCommentCell(r, 'seq', r.seq)}
-                    {renderCommentCell(r, 'materialCode', r.materialCode, 'font-medium text-gray-800')}
-                    {renderCommentCell(r, 'spec', r.spec)}
-                    {renderCommentCell(r, 'size', r.size)}
-                    {renderCommentCell(r, 'workOrderNo', r.workOrderNo)}
-                    {renderCommentCell(r, 'positiveFoilVoltage', r.positiveFoilVoltage)}
-                    {renderCommentCell(r, 'designQty', r.designQty.toLocaleString())}
-                    {renderCommentCell(r, 'actualQty', r.actualQty.toLocaleString())}
-                    {renderCommentCell(r, 'windingQty', r.windingQty.toLocaleString())}
-                    {renderCommentCell(r, 'goodQty', r.goodQty.toLocaleString())}
-                    {(() => { const absLoss = Math.abs(r.loss); const hasComment = r.comments && r.comments['loss']; const colorClass = absLoss > 1 ? (hasComment ? 'text-yellow-600' : 'text-red-600') : (hasComment ? 'text-orange-500' : ''); return renderCommentCell(r, 'loss', r.loss >= 0 ? `+${formatNum(r.loss)}%` : `${formatNum(r.loss)}%`, colorClass); })()}
-                    {(() => { const val = r.firstBottomConvexShortBurstRate; const hasComment = r.comments && r.comments['firstBottomConvexShortBurstRate']; const colorClass = val > 1 ? (hasComment ? 'text-yellow-600' : 'text-red-600') : (hasComment ? 'text-orange-500' : ''); return renderCommentCell(r, 'firstBottomConvexShortBurstRate', `${formatNum(val)}%`, colorClass); })()}
-                    {renderCommentCell(r, 'firstPassRate', `${formatNum(r.firstPassRate)}%`)}
-                    {renderCommentCell(r, 'batchYieldRate', r.batchYieldRate != null ? `${formatNum(r.batchYieldRate)}%` : '—')}
-                    {renderCommentCell(r, 'defectShort', r.defectShort ? formatNum(r.defectShort) : '—')}
-                    {renderCommentCell(r, 'defectBurst', r.defectBurst ? formatNum(r.defectBurst) : '—')}
-                    {renderCommentCell(r, 'defectBottomConvex', r.defectBottomConvex ? formatNum(r.defectBottomConvex) : '—')}
-                    {renderCommentCell(r, 'defectVoltage', r.defectVoltage ? formatNum(r.defectVoltage) : '—')}
-                    {renderCommentCell(r, 'defectAppearance', r.defectAppearance ? formatNum(r.defectAppearance) : '—')}
-                    {renderCommentCell(r, 'defectLeakage', r.defectLeakage ? formatNum(r.defectLeakage) : '—')}
-                    {renderCommentCell(r, 'defectHighCap', r.defectHighCap ? formatNum(r.defectHighCap) : '—')}
-                    {renderCommentCell(r, 'defectLowCap', r.defectLowCap ? formatNum(r.defectLowCap) : '—')}
-                    {renderCommentCell(r, 'defectDF', r.defectDF ? formatNum(r.defectDF) : '—')}
-                    {/* 作业员和备注不支持批注，保持原样 */}
-                    <td className="px-2 py-1.5 border border-gray-200">{r.operator}</td>
-                    <td className="px-2 py-1.5 max-w-[120px] truncate border border-gray-200" title={r.notes}>{r.notes}</td>
-                    {renderCommentCell(r, 'reworkOrderNo', r.reworkOrderNo)}
-                    <td className="px-2 py-1.5 border border-gray-200">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openEdit(r)} className="p-1 text-indigo-500 hover:text-indigo-700" title="编辑">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button onClick={() => deleteRecord(r.id)} className="p-1 text-red-400 hover:text-red-600" title="删除">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
+                    {visibleColumns.map((c) => (
+                      <Fragment key={c.key}>{renderBodyCell(r, c.key)}</Fragment>
+                    ))}
                   </tr>
                 ))}
                                 {/* 筛选结果汇总行 */}
