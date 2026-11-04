@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
 
+import { cloudflare } from "@cloudflare/vite-plugin";
+
 const env = loadEnv('', process.cwd(), '')
 
 // ─── 更新相册配置（顶层函数）────────────
@@ -49,125 +51,122 @@ function updateAlbumConfig(album: string, newFiles: { name: string; path: string
 }
 
 export default defineConfig({
-  plugins: [
-    react(),
-    {
-      name: 'api-proxy',
-      configureServer(server: any) {
-        // AI 识别代理
-        server.middlewares.use('/api/ai-proxy', async (req: any, res: any) => {
-          if (req.method !== 'POST') {
-            res.writeHead(405, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Method not allowed' }))
-            return
-          }
-          let body = ''
-          req.on('data', (chunk: any) => { body += chunk })
-          req.on('end', async () => {
-            try {
-              const { model, messages, max_tokens } = JSON.parse(body)
-              const apiKey = env.VITE_GLM_API_KEY || ''
-              if (!apiKey) {
-                res.writeHead(500, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ error: '未配置 VITE_GLM_API_KEY' }))
-                return
-              }
-              const glmRes = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                body: JSON.stringify({ model: model || 'glm-5v-turbo', messages, max_tokens }),
-              })
-              const data = await glmRes.json()
-              res.writeHead(glmRes.status, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify(data))
-            } catch (e: any) {
+  plugins: [react(), {
+    name: 'api-proxy',
+    configureServer(server: any) {
+      // AI 识别代理
+      server.middlewares.use('/api/ai-proxy', async (req: any, res: any) => {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+        let body = ''
+        req.on('data', (chunk: any) => { body += chunk })
+        req.on('end', async () => {
+          try {
+            const { model, messages, max_tokens } = JSON.parse(body)
+            const apiKey = env.VITE_GLM_API_KEY || ''
+            if (!apiKey) {
               res.writeHead(500, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ error: String(e.message || e) }))
+              res.end(JSON.stringify({ error: '未配置 VITE_GLM_API_KEY' }))
+              return
             }
-          })
+            const glmRes = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+              body: JSON.stringify({ model: model || 'glm-5v-turbo', messages, max_tokens }),
+            })
+            const data = await glmRes.json()
+            res.writeHead(glmRes.status, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify(data))
+          } catch (e: any) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: String(e.message || e) }))
+          }
         })
+      })
 
-        // 腾讯云 OCR 代理（使用官方 SDK，无需手写签名）
-        server.middlewares.use('/api/tencent-ocr', async (req: any, res: any) => {
-          if (req.method !== 'POST') {
-            res.writeHead(405, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Method not allowed' }))
-            return
-          }
-          let body = ''
-          req.on('data', (chunk: any) => { body += chunk })
-          req.on('end', async () => {
-            try {
-              const { imageBase64 } = JSON.parse(body)
-              if (!imageBase64) throw new Error('缺少图片数据')
-              const secretId = env.TENCENT_SECRET_ID || ''
-              const secretKey = env.TENCENT_SECRET_KEY || ''
-              if (!secretId || !secretKey) {
-                res.writeHead(500, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ error: '未配置 TENCENT_SECRET_ID / TENCENT_SECRET_KEY' }))
-                return
-              }
-              // 动态加载腾讯云官方 SDK（避免顶层 import 的 type 问题）
-              const { ocr } = await import('tencentcloud-sdk-nodejs')
-              const OcrClient = ocr.v20181119.Client
-              const client = new OcrClient({
-                credential: { secretId, secretKey },
-                region: 'ap-guangzhou',
-                profile: {
-                  signMethod: 'TC3-HMAC-SHA256',
-                  httpProfile: { reqMethod: 'POST', reqTimeout: 30 },
-                },
-              })
-              const data = await client.RecognizeTableOCR({ ImageBase64: imageBase64 })
-              res.writeHead(200, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ Response: data }))
-            } catch (e: any) {
+      // 腾讯云 OCR 代理（使用官方 SDK，无需手写签名）
+      server.middlewares.use('/api/tencent-ocr', async (req: any, res: any) => {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+        let body = ''
+        req.on('data', (chunk: any) => { body += chunk })
+        req.on('end', async () => {
+          try {
+            const { imageBase64 } = JSON.parse(body)
+            if (!imageBase64) throw new Error('缺少图片数据')
+            const secretId = env.TENCENT_SECRET_ID || ''
+            const secretKey = env.TENCENT_SECRET_KEY || ''
+            if (!secretId || !secretKey) {
               res.writeHead(500, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ error: String(e.message || e) }))
+              res.end(JSON.stringify({ error: '未配置 TENCENT_SECRET_ID / TENCENT_SECRET_KEY' }))
+              return
             }
-          })
+            // 动态加载腾讯云官方 SDK（避免顶层 import 的 type 问题）
+            const { ocr } = await import('tencentcloud-sdk-nodejs')
+            const OcrClient = ocr.v20181119.Client
+            const client = new OcrClient({
+              credential: { secretId, secretKey },
+              region: 'ap-guangzhou',
+              profile: {
+                signMethod: 'TC3-HMAC-SHA256',
+                httpProfile: { reqMethod: 'POST', reqTimeout: 30 },
+              },
+            })
+            const data = await client.RecognizeTableOCR({ ImageBase64: imageBase64 })
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ Response: data }))
+          } catch (e: any) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: String(e.message || e) }))
+          }
         })
+      })
 
-        // 图片上传 API
-        server.middlewares.use('/api/upload-images', (req: any, res: any) => {
-          if (req.method !== 'POST') {
-            res.writeHead(405, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Method not allowed' }))
-            return
-          }
-          let body = ''
-          req.on('data', (chunk: any) => { body += chunk })
-          req.on('end', () => {
-            try {
-              const { album, images } = JSON.parse(body)
-              if (!album || !Array.isArray(images)) {
-                res.writeHead(400, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ error: 'Missing album or images' }))
-                return
-              }
-              const albumDir = path.join(__dirname, 'public', 'images', album)
-              if (!fs.existsSync(albumDir)) {
-                fs.mkdirSync(albumDir, { recursive: true })
-              }
-              const results: { name: string; path: string }[] = []
-              for (const img of images) {
-                if (!img.name || !img.data) continue
-                const base64Data = img.data.replace(/^data:\w+\/\w+;base64,/, '')
-                const filePath = path.join(albumDir, img.name)
-                fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
-                results.push({ name: img.name, path: `/images/${album}/${img.name}` })
-              }
-              try { updateAlbumConfig(album, results) } catch (e) { console.error('Failed to update album config:', e) }
-              res.writeHead(200, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ success: true, files: results }))
-            } catch (e: any) {
-              res.writeHead(500, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ error: String(e.message || e) }))
+      // 图片上传 API
+      server.middlewares.use('/api/upload-images', (req: any, res: any) => {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+        let body = ''
+        req.on('data', (chunk: any) => { body += chunk })
+        req.on('end', () => {
+          try {
+            const { album, images } = JSON.parse(body)
+            if (!album || !Array.isArray(images)) {
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'Missing album or images' }))
+              return
             }
-          })
+            const albumDir = path.join(__dirname, 'public', 'images', album)
+            if (!fs.existsSync(albumDir)) {
+              fs.mkdirSync(albumDir, { recursive: true })
+            }
+            const results: { name: string; path: string }[] = []
+            for (const img of images) {
+              if (!img.name || !img.data) continue
+              const base64Data = img.data.replace(/^data:\w+\/\w+;base64,/, '')
+              const filePath = path.join(albumDir, img.name)
+              fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
+              results.push({ name: img.name, path: `/images/${album}/${img.name}` })
+            }
+            try { updateAlbumConfig(album, results) } catch (e) { console.error('Failed to update album config:', e) }
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: true, files: results }))
+          } catch (e: any) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: String(e.message || e) }))
+          }
         })
-      },
+      })
     },
-  ],
+  }, cloudflare()],
   server: { port: 5173, strictPort: true },
 })
